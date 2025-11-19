@@ -1,29 +1,189 @@
+import random
+import string
+from datetime import datetime, timedelta
 from flask import Blueprint, request
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
+from werkzeug.security import generate_password_hash, check_password_hash
 from app import db
-from app.models import Guardian
+from app.models import Guardian, OTP
 from app.utils.responses import success_response, error_response
+from werkzeug.security import generate_password_hash
+from app.utils.email_service import send_otp_email, send_welcome_email
 
 auth_bp = Blueprint('auth', __name__)
 
+def generate_otp(length=6):
+    """Generate a random numeric OTP"""
+    return ''.join(random.choices(string.digits, k=length))
+
+def check_otp_rate_limit(email):
+    """
+    Check if user has exceeded OTP request limits
+    """
+    # Count OTP requests in the last hour
+    one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+    recent_otps = OTP.query.filter(
+        OTP.email == email,
+        OTP.created_at >= one_hour_ago
+    ).count()
+    
+    # Limit to 5 OTP requests per hour
+    return recent_otps < 5
+
+# Send OTP to email
+@auth_bp.route('/send-otp', methods=['POST'])
+def send_otp():
+    try:
+        data = request.get_json()
+        email = data.get('email')
+
+        if not email:
+            return error_response("Email is required", 400)
+
+        # Check rate limit
+        if not check_otp_rate_limit(email):
+            return error_response("Too many OTP requests. Please try again later.", 429)
+
+        # Generate OTP
+        otp_code = generate_otp()
+        expiration_time = datetime.utcnow() + timedelta(minutes=10)
+
+        # Store OTP in database
+        otp_record = OTP(
+            email=email,
+            otp_code=otp_code,
+            expires_at=expiration_time,
+            is_used=False
+        )
+
+        db.session.add(otp_record)
+        db.session.commit()
+
+        # Send OTP via email
+        email_sent = send_otp_email(
+            recipient_email=email,
+            otp_code=otp_code
+        )
+
+        if not email_sent:
+            return error_response("Failed to send OTP email", 500)
+
+        return success_response(
+            message="OTP sent successfully",
+            status_code=200
+        )
+
+    except Exception as e:
+        db.session.rollback()
+        return error_response("Failed to send OTP", 500, str(e))
+
+
+# Verify OTP
+@auth_bp.route('/verify-otp', methods=['POST'])
+def verify_otp():
+    try:
+        data = request.get_json()
+        email = data.get('email')
+        otp_code = data.get('otp_code')
+
+        if not email or not otp_code:
+            return error_response("Email and OTP code are required", 400)
+
+        # Find the most recent valid OTP for this email
+        otp_record = OTP.query.filter_by(
+            email=email,
+            is_used=False
+        ).order_by(OTP.created_at.desc()).first()
+
+        if not otp_record:
+            return error_response("No OTP found for this email. Please request a new OTP.", 400)
+
+        # Check if OTP is expired
+        if datetime.utcnow() > otp_record.expires_at:
+            return error_response("OTP has expired. Please request a new OTP.", 400)
+
+        # Check if OTP matches
+        if otp_record.otp_code != otp_code:
+            return error_response("Invalid OTP code. Please try again.", 400)
+
+        # Mark OTP as used
+        otp_record.is_used = True
+        otp_record.used_at = datetime.utcnow()
+        db.session.commit()
+
+        return success_response(
+            message="OTP verified successfully",
+            status_code=200
+        )
+
+    except Exception as e:
+        db.session.rollback()
+        return error_response("OTP verification failed", 500, str(e))
+
+
+# Check if credentials are available
+@auth_bp.route('/check-credentials', methods=['POST'])
+def check_credentials():
+    try:
+        data = request.get_json()
+
+        # Check if username exists
+        if data.get('username'):
+            existing_username = Guardian.query.filter_by(username=data['username']).first()
+            if existing_username:
+                return error_response("Username already exists", 400)
+
+        # Check if email exists
+        if data.get('email'):
+            existing_email = Guardian.query.filter_by(email=data['email']).first()
+            if existing_email:
+                return error_response("Email already exists", 400)
+
+        # Check if contact number exists
+        if data.get('contact_number'):
+            existing_contact = Guardian.query.filter_by(contact_number=data['contact_number']).first()
+            if existing_contact:
+                return error_response("Contact number already exists", 400)
+
+        return success_response(
+            message="All credentials are available",
+            status_code=200
+        )
+
+    except Exception as e:
+        return error_response("Credential check failed", 500, str(e))
+
+
+# Register a new guardian
 @auth_bp.route('/register', methods=['POST'])
 def register():
     try:
         data = request.get_json()
-        
-        # Validation
-        required_fields = ['username', 'password', 'guardian_name', 'email', 'vip_id']
+
+        # Required fields
+        required_fields = [
+            'username',
+            'password',
+            'guardian_name',
+            'email',
+            'contact_number',
+            'relationship_to_vip',
+            'province',
+            'city',
+            'barangay',
+            'street_address'
+        ]
+
         for field in required_fields:
             if not data.get(field):
                 return error_response(f"Missing required field: {field}", 400)
-        
+
         # Check if username or email already exists
         if Guardian.query.filter_by(username=data['username']).first():
             return error_response("Username already exists", 400)
-        
         if Guardian.query.filter_by(email=data['email']).first():
             return error_response("Email already exists", 400)
-        
+
         # Create new guardian
         guardian = Guardian(
             username=data['username'],
@@ -35,59 +195,72 @@ def register():
             city=data.get('city'),
             barangay=data.get('barangay'),
             street_address=data.get('street_address'),
-            vip_id=data['vip_id'],
             guardian_image_url=data.get('guardian_image_url')
         )
-        guardian.set_password(data['password'])
-        
+
+        # Hash password before saving
+        guardian.password = generate_password_hash(data['password'])
+
         db.session.add(guardian)
         db.session.commit()
-        
+
         return success_response(
             data={"guardian_id": guardian.guardian_id},
             message="Guardian registered successfully",
             status_code=201
         )
-        
+
     except Exception as e:
         db.session.rollback()
         return error_response("Registration failed", 500, str(e))
 
+
+
+# Login
 @auth_bp.route('/login', methods=['POST'])
 def login():
     try:
         data = request.get_json()
-        
-        if not data.get('username') or not data.get('password'):
+        username = data.get('username')
+        password = data.get('password')
+
+        if not username or not password:
             return error_response("Username and password required", 400)
-        
-        guardian = Guardian.query.filter_by(username=data['username']).first()
-        
-        if not guardian or not guardian.check_password(data['password']):
+
+        guardian = Guardian.query.filter_by(username=username).first()
+
+        if not guardian or not check_password_hash(guardian.password, password):
             return error_response("Invalid credentials", 401)
-        
+
+        # Create JWT token
         access_token = create_access_token(identity=guardian.guardian_id)
-        
-        return success_response(data={
-            "access_token": access_token,
-            "guardian_id": guardian.guardian_id,
-            "username": guardian.username,
-            "guardian_name": guardian.guardian_name
-        }, message="Login successful")
-        
+
+        return success_response(
+            data={
+                "access_token": access_token,
+                "guardian_id": guardian.guardian_id,
+                "username": guardian.username,
+                "guardian_name": guardian.guardian_name
+            },
+            message="Login successful"
+        )
+
     except Exception as e:
         return error_response("Login failed", 500, str(e))
 
+
+
+# Get guardian profile
 @auth_bp.route('/profile', methods=['GET'])
 @jwt_required()
 def get_profile():
     try:
         guardian_id = get_jwt_identity()
         guardian = Guardian.query.get(guardian_id)
-        
+
         if not guardian:
             return error_response("Guardian not found", 404)
-        
+
         profile_data = {
             "guardian_id": guardian.guardian_id,
             "username": guardian.username,
@@ -100,11 +273,11 @@ def get_profile():
             "barangay": guardian.barangay,
             "street_address": guardian.street_address,
             "guardian_image_url": guardian.guardian_image_url,
-            "vip_id": guardian.vip_id,
-            "created_at": guardian.created_at.isoformat() if guardian.created_at else None
+            "created_at": guardian.created_at.isoformat() if guardian.created_at else None,
+            "updated_at": guardian.updated_at.isoformat() if guardian.updated_at else None
         }
-        
+
         return success_response(data=profile_data)
-        
+
     except Exception as e:
         return error_response("Failed to fetch profile", 500, str(e))
