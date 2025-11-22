@@ -27,8 +27,8 @@ def check_otp_rate_limit(email):
         OTP.created_at >= one_hour_ago
     ).count()
     
-    # Limit to 5 OTP requests per hour
-    return recent_otps < 5
+    # Limit to 3 OTP requests per hour
+    return recent_otps < 3
 
 # Send OTP to email
 @auth_bp.route('/send-otp', methods=['POST'])
@@ -131,19 +131,19 @@ def check_credentials():
         if data.get('username'):
             existing_username = Guardian.query.filter_by(username=data['username']).first()
             if existing_username:
-                return error_response("Username already exists", 400)
+                return error_response("Username already exists. Please use another username", 400)
 
         # Check if email exists
         if data.get('email'):
             existing_email = Guardian.query.filter_by(email=data['email']).first()
             if existing_email:
-                return error_response("Email already exists", 400)
+                return error_response("Email already exists. Please use another email", 400)
 
         # Check if contact number exists
         if data.get('contact_number'):
             existing_contact = Guardian.query.filter_by(contact_number=data['contact_number']).first()
             if existing_contact:
-                return error_response("Contact number already exists", 400)
+                return error_response("Contact number already exists. Please use another contact number", 400)
 
         return success_response(
             message="All credentials are available",
@@ -180,7 +180,7 @@ def register():
 
         # Check if username or email already exists
         if Guardian.query.filter_by(username=data['username']).first():
-            return error_response("Username already exists", 400)
+            return error_response("Username already exists, please use another username", 400)
         if Guardian.query.filter_by(email=data['email']).first():
             return error_response("Email already exists", 400)
 

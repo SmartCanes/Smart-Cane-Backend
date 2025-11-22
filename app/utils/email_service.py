@@ -116,14 +116,14 @@ def send_otp_email(recipient_email, otp_code, guardian_name=None):
             server.login(email_username, email_password)
             server.send_message(msg)
         
-        print(f"✅ OTP email sent successfully to {recipient_email}")
+        print(f"OTP email sent successfully to {recipient_email}")
         return True
         
     except Exception as e:
-        print(f"❌ Failed to send OTP email to {recipient_email}: {str(e)}")
+        print(f"Failed to send OTP email to {recipient_email}: {str(e)}")
         # Fallback to console output
         print("=" * 60)
-        print("📧 OTP EMAIL (Fallback - SMTP Failed)")
+        print("OTP EMAIL (Fallback - SMTP Failed)")
         print(f"TO: {recipient_email}")
         print(f"OTP CODE: {otp_code}")
         print("=" * 60)
@@ -136,7 +136,7 @@ def send_welcome_email(recipient_email, guardian_name):
     try:
         # For now, just log to console
         print("=" * 60)
-        print("🎉 WELCOME EMAIL")
+        print(" WELCOME EMAIL")
         print(f"TO: {recipient_email}")
         print(f"GUARDIAN: {guardian_name}")
         print("Welcome to iCane Smart Cane!")
