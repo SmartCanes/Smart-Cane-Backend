@@ -19,7 +19,7 @@ def send_otp_email(recipient_email, otp_code, guardian_name=None):
         # If no email credentials provided, fallback to console output
         if not email_username or not email_password:
             print("=" * 60)
-            print("📧 OTP EMAIL (Console Output - Configure SMTP for real emails)")
+            print("OTP EMAIL (Console Output - Configure SMTP for real emails)")
             print(f"TO: {recipient_email}")
             print(f"OTP CODE: {otp_code}")
             print(f"EXPIRES: 10 minutes")
@@ -67,7 +67,7 @@ def send_otp_email(recipient_email, otp_code, guardian_name=None):
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>iCane Smart Cane</h1>
+                    <h1>iCane: Smart Cane</h1>
                 </div>
                 <div class="content">
                     <h2>Email Verification</h2>
@@ -92,7 +92,7 @@ def send_otp_email(recipient_email, otp_code, guardian_name=None):
         
         # Plain text fallback
         text_content = f"""
-        iCane Smart Cane - Email Verification
+        iCane: Smart Cane - Email Verification
         
         Hello {guardian_name or 'User'},
         
@@ -116,7 +116,7 @@ def send_otp_email(recipient_email, otp_code, guardian_name=None):
             server.login(email_username, email_password)
             server.send_message(msg)
         
-        print(f"OTP email sent successfully to {recipient_email}")
+        print(f" OTP email sent successfully to {recipient_email}")
         return True
         
     except Exception as e:
@@ -127,7 +127,7 @@ def send_otp_email(recipient_email, otp_code, guardian_name=None):
         print(f"TO: {recipient_email}")
         print(f"OTP CODE: {otp_code}")
         print("=" * 60)
-        return True  # Return True to continue registration process
+        return True  
 
 def send_welcome_email(recipient_email, guardian_name):
     """
@@ -136,7 +136,7 @@ def send_welcome_email(recipient_email, guardian_name):
     try:
         # For now, just log to console
         print("=" * 60)
-        print(" WELCOME EMAIL")
+        print("WELCOME EMAIL")
         print(f"TO: {recipient_email}")
         print(f"GUARDIAN: {guardian_name}")
         print("Welcome to iCane Smart Cane!")
