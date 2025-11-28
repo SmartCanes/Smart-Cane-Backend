@@ -1,5 +1,5 @@
 import os
-from flask import Flask, jsonify
+from flask import Flask, app, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager
 from dotenv import load_dotenv
@@ -22,24 +22,23 @@ def create_app():
     load_dotenv(env_path)
 
     # DEBUG: Check if env variables are loaded
-    print("SECRET_KEY:", os.environ.get('SECRET_KEY'))
     print("DATABASE_URL:", os.environ.get('DATABASE_URL'))
     print("JWT_SECRET_KEY:", os.environ.get('JWT_SECRET_KEY'))
 
     app = Flask(__name__)
 
      # Enable CORS for all routes (allowing all origins, you can restrict later)
-    CORS(app)
+    CORS(app, supports_credentials=True)
 
     # Configuration
-    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
     app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
         'DATABASE_URL',
         'mysql+pymysql://root:@localhost:3306/smart_cane_db'
     )
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'jwt-secret-key-here')
-    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
+    app.config['SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'secret-key')
+    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=15)
+    app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=7)
 
     # Initialize extensions
     db.init_app(app)
@@ -52,6 +51,7 @@ def create_app():
     from app.routes.location import location_bp
     from app.routes.reminders import reminders_bp
     from app.routes.alerts import alerts_bp
+    from app.routes.device_guardian import device_guardian_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(vip_bp, url_prefix='/api/vip')
@@ -59,6 +59,7 @@ def create_app():
     app.register_blueprint(location_bp, url_prefix='/api/location')
     app.register_blueprint(reminders_bp, url_prefix='/api/reminders')
     app.register_blueprint(alerts_bp, url_prefix='/api/alerts')
+    app.register_blueprint(device_guardian_bp, url_prefix='/api/device-guardian')
 
     # Error handlers
     @app.errorhandler(400)

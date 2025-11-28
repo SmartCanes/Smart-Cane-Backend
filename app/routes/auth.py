@@ -1,11 +1,13 @@
 import random
 import string
 from datetime import datetime, timedelta
-from flask import Blueprint, request
-from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
+from urllib import response
+from flask import Blueprint, jsonify, make_response, request
+from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
 from app import db
 from app.models import Guardian, OTP
+from app.routes import guardian
 from app.utils.responses import success_response, error_response
 from werkzeug.security import generate_password_hash
 from app.utils.email_service import send_otp_email, send_welcome_email
@@ -215,7 +217,6 @@ def register():
         return error_response("Registration failed", 500, str(e))
 
 
-
 # Login
 @auth_bp.route('/login', methods=['POST'])
 def login():
@@ -232,16 +233,25 @@ def login():
         if not guardian or not check_password_hash(guardian.password, password):
             return error_response("Invalid credentials", 401)
 
-        # Create JWT token
-        access_token = create_access_token(identity=guardian.guardian_id)
+        access_token = create_access_token(identity=str(guardian.guardian_id))
+        refresh_token = create_refresh_token(identity=str(guardian.guardian_id))
+        
+        response = make_response(jsonify({
+        "access_token": access_token,
+        "user_id": guardian.guardian_id,
+        "username": guardian.username
+        }))
 
+        # response.set_cookie(
+        #     "refresh_token",
+        #     refresh_token,
+        #     httponly=True,
+        #     secure=True,         
+        #     samesite='Strict',     
+        #     max_age=7*24*60*60    
+        # )
         return success_response(
-            data={
-                "access_token": access_token,
-                "guardian_id": guardian.guardian_id,
-                "username": guardian.username,
-                "guardian_name": guardian.guardian_name
-            },
+            data=response.get_json(),
             message="Login successful"
         )
 
@@ -281,3 +291,33 @@ def get_profile():
 
     except Exception as e:
         return error_response("Failed to fetch profile", 500, str(e))
+
+@auth_bp.route('/refresh', methods=['POST'])
+@jwt_required(refresh=True)  
+def refresh():
+    current_user_id = get_jwt_identity()
+    new_access_token = create_access_token(identity=current_user_id)
+    return success_response(
+        data={"access_token": new_access_token},
+        message="Access token refreshed"
+    )
+
+@auth_bp.route('/verify-token', methods=['GET'])
+@jwt_required()  
+def verify_token():
+    try:
+        guardian_id = get_jwt_identity()
+        guardian = Guardian.query.get(guardian_id)
+
+        if not guardian:
+            return error_response("Guardian not found", 404)
+
+        return success_response(
+            data={
+                "guardian_id": guardian.guardian_id,
+                "username": guardian.username
+            },
+            message="Token is valid"
+        )
+    except Exception as e:
+        return error_response("Invalid or expired token", 401, str(e))
