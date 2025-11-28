@@ -79,7 +79,7 @@ class Device(db.Model):
     guardian_links = db.relationship('DeviceGuardian', backref='device', lazy=True)
 
 class DeviceGuardian(db.Model):
-    __tablename__ = 'device_guardian'
+    __tablename__ = 'device_guardian_tbl'
     __table_args__ = {'schema': 'smart_cane_db'}
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
