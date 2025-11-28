@@ -106,6 +106,10 @@
             device_id INT(11) NOT NULL AUTO_INCREMENT,
             vip_id INT(11) NOT NULL,
             device_serial_number VARCHAR(100) UNIQUE NOT NULL,
+            pairing_token VARCHAR(100),  
+            pairing_token_expires_at DATETIME,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (device_id),
             FOREIGN KEY (vip_id) REFERENCES vip_tbl(vip_id)
                 ON DELETE CASCADE ON UPDATE CASCADE

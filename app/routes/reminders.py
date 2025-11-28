@@ -3,12 +3,14 @@ from app import db
 from app.models import NoteReminder
 from app.utils.auth import guardian_required
 from app.utils.responses import success_response, error_response, paginated_response
+from app.utils.decorators import guardian_with_device_required
 
 reminders_bp = Blueprint('reminders', __name__)
 
 @reminders_bp.route('', methods=['POST'])
 @guardian_required
-def create_reminder(guardian):
+@guardian_with_device_required
+def create_reminder(guardian, devices):
     try:
         data = request.get_json()
         
