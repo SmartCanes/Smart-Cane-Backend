@@ -111,7 +111,7 @@
                 ON DELETE CASCADE ON UPDATE CASCADE
         );
 
-        CREATE TABLE device_guardian (
+        CREATE TABLE device_guardian_tbl (
             id INT AUTO_INCREMENT PRIMARY KEY,
             device_id INT NOT NULL,
             guardian_id INT NOT NULL,
