@@ -56,7 +56,6 @@ def get_guardian(guardian, guardian_id):
             "barangay": guardian_data.barangay,
             "street_address": guardian_data.street_address,
             "guardian_image_url": guardian_data.guardian_image_url,
-            "vip_id": guardian_data.vip_id,
             "created_at": guardian_data.created_at.isoformat() if guardian_data.created_at else None
         }
         
