@@ -73,10 +73,8 @@ class Device(db.Model):
     __table_args__ = {'schema': 'smart_cane_db'}
 
     device_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    vip_id = db.Column(db.Integer, db.ForeignKey('smart_cane_db.vip_tbl.vip_id'), nullable=False)
+    vip_id = db.Column(db.Integer, db.ForeignKey('smart_cane_db.vip_tbl.vip_id'), nullable=True)
     device_serial_number = db.Column(db.String(100), unique=True, nullable=False)
-    pairing_token = db.Column(db.String(100))
-    pairing_token_expires_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.TIMESTAMP, default=datetime.utcnow)
     updated_at = db.Column(db.TIMESTAMP, default=datetime.utcnow, onupdate=datetime.utcnow)
 
