@@ -59,12 +59,10 @@ def pair_device(guardian: Guardian):
         if not device_serial:
             return error_response('`device_serial_number` is required', 400)
 
-        # 1️⃣ Lookup device
         device = Device.query.filter_by(device_serial_number=device_serial).first()
         if not device:
             return error_response('Device not found', 404)
 
-        # 2️⃣ Check if guardian is already linked
         existing_link = DeviceGuardian.query.filter_by(
             device_id=device.device_id,
             guardian_id=guardian.guardian_id
@@ -72,7 +70,6 @@ def pair_device(guardian: Guardian):
         if existing_link:
             return error_response('Guardian already paired with this device', 400)
 
-        # 3️⃣ If device has no VIP yet, create VIP
         if not device.vip_id:
             if not vip_name:
                 return error_response(
@@ -84,7 +81,7 @@ def pair_device(guardian: Guardian):
                 created_at=datetime.utcnow()
             )
             db.session.add(new_vip)
-            db.session.flush()  # generate vip_id
+            db.session.flush() 
             device.vip_id = new_vip.vip_id
 
         # 4️⃣ Create link in device_guardian_tbl
