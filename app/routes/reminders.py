@@ -3,7 +3,7 @@ from app import db
 from app.models import NoteReminder
 from app.utils.auth import guardian_required
 from app.utils.responses import success_response, error_response, paginated_response
-from app.utils.decorators import guardian_with_device_required
+from app.utils.auth import guardian_with_device_required
 
 reminders_bp = Blueprint('reminders', __name__)
 
