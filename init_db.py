@@ -1,5 +1,5 @@
 from app import create_app, db
-from app.models import VIP, Guardian, GPSLocation, NoteReminder, EmergencyAlert
+from app.models import Device
 
 app = create_app()
 
@@ -8,13 +8,9 @@ with app.app_context():
     db.create_all()
     print("Database tables created successfully!")
     
-    sample_vip = VIP(
-        vip_name="John Doe",
-        province="Sample Province",
-        city="Sample City",
-        barangay="Sample Barangay",
-        street_address="123 Sample Street"
+    device = Device(
+        device_serial_number='SC-136902',
     )
-    db.session.add(sample_vip)
+    db.session.add(device)
     db.session.commit()
-    print(f"Sample VIP created with ID: {sample_vip.vip_id}")
+    print(f"Device created with ID: {device.device_id}")
