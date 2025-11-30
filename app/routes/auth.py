@@ -1,6 +1,6 @@
 import random
 import string
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib import response
 from flask import Blueprint, jsonify, make_response, request
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
@@ -9,7 +9,6 @@ from app import db
 from app.models import Guardian, OTP
 from app.routes import guardian
 from app.utils.responses import success_response, error_response
-from werkzeug.security import generate_password_hash
 from app.utils.email_service import send_otp_email, send_welcome_email
 
 auth_bp = Blueprint('auth', __name__)
@@ -23,7 +22,7 @@ def check_otp_rate_limit(email):
     Check if user has exceeded OTP request limits
     """
     # Count OTP requests in the last hour
-    one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+    one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
     recent_otps = OTP.query.filter(
         OTP.email == email,
         OTP.created_at >= one_hour_ago
@@ -48,7 +47,7 @@ def send_otp():
 
         # Generate OTP
         otp_code = generate_otp()
-        expiration_time = datetime.utcnow() + timedelta(minutes=10)
+        expiration_time = datetime.now(timezone.utc) + timedelta(minutes=10)
 
         # Store OTP in database
         otp_record = OTP(
@@ -101,7 +100,7 @@ def verify_otp():
             return error_response("No OTP found for this email. Please request a new OTP.", 400)
 
         # Check if OTP is expired
-        if datetime.utcnow() > otp_record.expires_at:
+        if datetime.now(timezone.utc) > otp_record.expires_at.replace(tzinfo=timezone.utc):
             return error_response("OTP has expired. Please request a new OTP.", 400)
 
         # Check if OTP matches
@@ -110,7 +109,7 @@ def verify_otp():
 
         # Mark OTP as used
         otp_record.is_used = True
-        otp_record.used_at = datetime.utcnow()
+        otp_record.used_at = datetime.now(timezone.utc)
         db.session.commit()
 
         return success_response(
