@@ -115,6 +115,7 @@
         id INT AUTO_INCREMENT PRIMARY KEY,
         device_id INT NOT NULL,
         guardian_id INT NOT NULL,
+        assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (device_id) REFERENCES device_tbl(device_id) ON DELETE CASCADE,
         FOREIGN KEY (guardian_id) REFERENCES guardian_tbl(guardian_id) ON DELETE CASCADE,
         UNIQUE (device_id, guardian_id)
