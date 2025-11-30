@@ -51,7 +51,7 @@ def create_app():
     from app.routes.location import location_bp
     from app.routes.reminders import reminders_bp
     from app.routes.alerts import alerts_bp
-    from app.routes.device_pairing import qr_bp
+    from app.routes.device_pairing import device_pairing_bp
     from app.routes.device_guardian import device_guardian_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
@@ -61,7 +61,7 @@ def create_app():
     app.register_blueprint(reminders_bp, url_prefix='/api/reminders')
     app.register_blueprint(alerts_bp, url_prefix='/api/alerts')
     app.register_blueprint(device_guardian_bp, url_prefix='/api/device-guardian')
-    app.register_blueprint(qr_bp, url_prefix='/api/qr')
+    app.register_blueprint(device_pairing_bp, url_prefix='/api/device')
 
     # Error handlers
     @app.errorhandler(400)
