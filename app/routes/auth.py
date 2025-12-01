@@ -315,10 +315,12 @@ def refresh():
         
         new_access_token = create_access_token(identity=str(guardian.guardian_id), additional_claims=additional_claims)
         
-        response = success_response({
+        response_body, status_code = success_response({
             "success": True,
             "message": "Access token refreshed"
         })
+        
+        response = make_response(response_body, status_code)
         
         set_access_cookies(response, new_access_token)
         
