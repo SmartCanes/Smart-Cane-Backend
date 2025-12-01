@@ -262,25 +262,60 @@ def login():
 
 @auth_bp.route('/logout', methods=['POST'])
 def logout():
-    response = success_response({
-        "success": True,
-        "message": "Logged out successfully"
-    })
-    
-    response.delete_cookie('access_token')
-    response.delete_cookie('refresh_token')
-    
-    return response
+    try:
+        response_body, status_code = success_response(
+            data={"message": "Logged out successfully"},
+            message="Logged out successfully"
+        )
+        
+        response = make_response(response_body, status_code)
+        
+        response.set_cookie(
+            'access_token',
+            value='',
+            expires=0,  
+            httponly=True,
+            secure=True,  
+            samesite='None',  
+            path='/',
+            domain=None 
+        )
+        
+        response.set_cookie(
+            'refresh_token',
+            value='',
+            expires=0,
+            httponly=True,
+            secure=True,
+            samesite='None',
+            path='/',
+            domain=None
+        )
+        
+        return response
+        
+    except Exception as e:
+        print(f"Logout error: {e}")
+        return error_response("Logout failed", 500, str(e))
 
 @auth_bp.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)  
 def refresh():
     try:
         guardian_id = get_jwt_identity()
+        guardian = Guardian.query.get(guardian_id)
+        if not guardian:
+            return error_response("User not found", 404)
         
-        new_access_token = create_access_token(identity=guardian_id)
+        additional_claims = {
+            "guardian_id": guardian.guardian_id,
+            "username": guardian.username,
+            "role": guardian.role
+        }
         
-        response = jsonify({
+        new_access_token = create_access_token(identity=str(guardian.guardian_id), additional_claims=additional_claims)
+        
+        response = success_response({
             "success": True,
             "message": "Access token refreshed"
         })
@@ -312,9 +347,6 @@ def verify_token():
             return success_response(
                 data={
                     "guardian_id": guardian.guardian_id,
-                    "username": guardian.username,
-                    "guardian_name": guardian.guardian_name,
-                    "email": guardian.email,
                     "token_valid": True,
                     "expires_in": int(time_left) if time_left > 0 else 0, 
                     "expires_at": expiry_time,  
@@ -328,7 +360,6 @@ def verify_token():
             return error_response("Token verification failed", 401, str(e))
             
     except Exception as e:
-        # General server error
         print(f"Verify token error: {e}")
         return error_response("Token verification failed", 500, str(e))
     
