@@ -241,9 +241,6 @@ def login():
         set_refresh_cookies(response, create_refresh_token(identity=str(guardian.guardian_id)))
         
         return response
-       # Add CORS headers (important!)
-    #    response.headers.add('Access-Control-Allow-Origin', 'https://localhost:5173')
-    #    response.headers.add('Access-Control-Allow-Credentials', 'true')
     except Exception as e:
        print(f"Login error: {e}")
        return error_response("Login failed", 500, str(e))
@@ -267,6 +264,7 @@ def refresh():
         
     except Exception as e:
         return error_response("Invalid refresh token", 401, str(e))
+    
 @auth_bp.route('/verify-token', methods=['GET'])
 @jwt_required()
 def verify_token():
