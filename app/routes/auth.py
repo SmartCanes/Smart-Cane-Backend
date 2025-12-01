@@ -252,14 +252,26 @@ def login():
 
         response = make_response(response_body, status_code)
 
-        set_access_cookies(response, create_access_token(identity=str(guardian.guardian_id), additional_claims=additional_claims,))
+        set_access_cookies(response, create_access_token(identity=str(guardian.guardian_id), additional_claims=additional_claims))
         set_refresh_cookies(response, create_refresh_token(identity=str(guardian.guardian_id)))
         
         return response
     except Exception as e:
        print(f"Login error: {e}")
        return error_response("Login failed", 500, str(e))
+
+@auth_bp.route('/logout', methods=['POST'])
+def logout():
+    response = success_response({
+        "success": True,
+        "message": "Logged out successfully"
+    })
     
+    response.delete_cookie('access_token')
+    response.delete_cookie('refresh_token')
+    
+    return response
+
 @auth_bp.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)  
 def refresh():
