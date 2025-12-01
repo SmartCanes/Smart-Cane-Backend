@@ -13,6 +13,8 @@ from flask_jwt_extended import decode_token
 from flask_jwt_extended import set_access_cookies, set_refresh_cookies
 from flask_jwt_extended import get_jwt
 
+from app.utils.serializer import model_to_dict
+
 auth_bp = Blueprint('auth', __name__)
 
 def generate_otp(length=6):
@@ -224,20 +226,33 @@ def login():
         if not guardian or not check_password_hash(guardian.password, password):
             return error_response("Invalid credentials", 401)
 
-        response_data = {
+        additional_claims = {
             "guardian_id": guardian.guardian_id,
             "username": guardian.username,
-            "guardian_name": guardian.guardian_name
+            "role": guardian.role
         }
 
+        user_data = model_to_dict(
+            guardian, 
+            include_fields=[
+                'guardian_id', 
+                'username', 
+                'guardian_name', 
+                'email',
+                'contact_number',
+                'role',
+                'guardian_image_url',
+            ]
+        )
+
         response_body, status_code = success_response(
-            data=response_data,
+            data=user_data,
             message="Login successful"
         )
 
         response = make_response(response_body, status_code)
 
-        set_access_cookies(response, create_access_token(identity=str(guardian.guardian_id)))
+        set_access_cookies(response, create_access_token(identity=str(guardian.guardian_id), additional_claims=additional_claims,))
         set_refresh_cookies(response, create_refresh_token(identity=str(guardian.guardian_id)))
         
         return response
