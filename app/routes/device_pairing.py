@@ -117,5 +117,6 @@ def pair_device():
 
     except Exception as e:
         db.session.rollback()
+        print(e)
         return error_response('Failed to pair device', 500, str(e))
 
