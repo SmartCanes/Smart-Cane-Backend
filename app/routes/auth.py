@@ -224,7 +224,7 @@ def login():
         guardian = Guardian.query.filter_by(username=username).first()
 
         if not guardian or not check_password_hash(guardian.password, password):
-            return error_response("Invalid credentials", 401)
+            return error_response("Login failed. Please check your email or password and try again.", 401)
 
         additional_claims = {
             "guardian_id": guardian.guardian_id,
