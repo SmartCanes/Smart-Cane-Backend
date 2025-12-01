@@ -1,15 +1,17 @@
 import random
 import string
 from datetime import datetime, timedelta, timezone
-from urllib import response
 from flask import Blueprint, jsonify, make_response, request
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
 from app import db
 from app.models import Guardian, OTP
-from app.routes import guardian
+from app.utils.auth import guardian_required
 from app.utils.responses import success_response, error_response
-from app.utils.email_service import send_otp_email, send_welcome_email
+from app.utils.email_service import send_otp_email
+from flask_jwt_extended import decode_token
+from flask_jwt_extended import set_access_cookies, set_refresh_cookies
+from flask_jwt_extended import get_jwt
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -31,7 +33,6 @@ def check_otp_rate_limit(email):
     # Limit to 3 OTP requests per hour
     return recent_otps < 3
 
-# Send OTP to email
 @auth_bp.route('/send-otp', methods=['POST'])
 def send_otp():
     try:
@@ -78,8 +79,6 @@ def send_otp():
         db.session.rollback()
         return error_response("Failed to send OTP", 500, str(e))
 
-
-# Verify OTP
 @auth_bp.route('/verify-otp', methods=['POST'])
 def verify_otp():
     try:
@@ -121,8 +120,6 @@ def verify_otp():
         db.session.rollback()
         return error_response("OTP verification failed", 500, str(e))
 
-
-# Check if credentials are available
 @auth_bp.route('/check-credentials', methods=['POST'])
 def check_credentials():
     try:
@@ -154,8 +151,6 @@ def check_credentials():
     except Exception as e:
         return error_response("Credential check failed", 500, str(e))
 
-
-# Register a new guardian
 @auth_bp.route('/register', methods=['POST'])
 def register():
     try:
@@ -215,8 +210,6 @@ def register():
         db.session.rollback()
         return error_response("Registration failed", 500, str(e))
 
-
-# Login
 @auth_bp.route('/login', methods=['POST'])
 def login():
     try:
@@ -226,39 +219,94 @@ def login():
 
         if not username or not password:
             return error_response("Username and password required", 400)
-
         guardian = Guardian.query.filter_by(username=username).first()
 
         if not guardian or not check_password_hash(guardian.password, password):
             return error_response("Invalid credentials", 401)
 
-        access_token = create_access_token(identity=str(guardian.guardian_id))
-        refresh_token = create_refresh_token(identity=str(guardian.guardian_id))
-        
-        response = make_response(jsonify({
-        "access_token": access_token,
-        "user_id": guardian.guardian_id,
-        "username": guardian.username
-        }))
+        response_data = {
+            "guardian_id": guardian.guardian_id,
+            "username": guardian.username,
+            "guardian_name": guardian.guardian_name
+        }
 
-        # response.set_cookie(
-        #     "refresh_token",
-        #     refresh_token,
-        #     httponly=True,
-        #     secure=True,         
-        #     samesite='Strict',     
-        #     max_age=7*24*60*60    
-        # )
-        return success_response(
-            data=response.get_json(),
+        response_body, status_code = success_response(
+            data=response_data,
             message="Login successful"
         )
 
+        response = make_response(response_body, status_code)
+
+        set_access_cookies(response, create_access_token(identity=str(guardian.guardian_id)))
+        set_refresh_cookies(response, create_refresh_token(identity=str(guardian.guardian_id)))
+        
+        return response
+       # Add CORS headers (important!)
+    #    response.headers.add('Access-Control-Allow-Origin', 'https://localhost:5173')
+    #    response.headers.add('Access-Control-Allow-Credentials', 'true')
     except Exception as e:
-        return error_response("Login failed", 500, str(e))
-
-
-
+       print(f"Login error: {e}")
+       return error_response("Login failed", 500, str(e))
+    
+@auth_bp.route('/refresh', methods=['POST'])
+@jwt_required(refresh=True)  
+def refresh():
+    try:
+        guardian_id = get_jwt_identity()
+        
+        new_access_token = create_access_token(identity=guardian_id)
+        
+        response = jsonify({
+            "success": True,
+            "message": "Access token refreshed"
+        })
+        
+        set_access_cookies(response, new_access_token)
+        
+        return response
+        
+    except Exception as e:
+        return error_response("Invalid refresh token", 401, str(e))
+@auth_bp.route('/verify-token', methods=['GET'])
+@jwt_required()
+def verify_token():
+    try:
+        try:
+            guardian_id = get_jwt_identity() 
+            guardian = Guardian.query.get(guardian_id)
+            if not guardian:
+                return error_response("User not found", 404)
+            
+            jwt_data = get_jwt()
+            
+            import time
+            current_time = time.time()
+            expiry_time = jwt_data.get('exp', 0)
+            time_left = expiry_time - current_time
+            
+            return success_response(
+                data={
+                    "guardian_id": guardian.guardian_id,
+                    "username": guardian.username,
+                    "guardian_name": guardian.guardian_name,
+                    "email": guardian.email,
+                    "token_valid": True,
+                    "expires_in": int(time_left) if time_left > 0 else 0, 
+                    "expires_at": expiry_time,  
+                    "issued_at": jwt_data.get('iat'), 
+                    "token_type": jwt_data.get('type', 'access')
+                },
+                message="Token is valid"
+            )
+            
+        except Exception as e:
+            return error_response("Token verification failed", 401, str(e))
+            
+    except Exception as e:
+        # General server error
+        print(f"Verify token error: {e}")
+        return error_response("Token verification failed", 500, str(e))
+    
 # Get guardian profile
 @auth_bp.route('/profile', methods=['GET'])
 @jwt_required()
@@ -290,33 +338,3 @@ def get_profile():
 
     except Exception as e:
         return error_response("Failed to fetch profile", 500, str(e))
-
-@auth_bp.route('/refresh', methods=['POST'])
-@jwt_required(refresh=True)  
-def refresh():
-    current_user_id = get_jwt_identity()
-    new_access_token = create_access_token(identity=current_user_id)
-    return success_response(
-        data={"access_token": new_access_token},
-        message="Access token refreshed"
-    )
-
-@auth_bp.route('/verify-token', methods=['GET'])
-@jwt_required()  
-def verify_token():
-    try:
-        guardian_id = get_jwt_identity()
-        guardian = Guardian.query.get(guardian_id)
-
-        if not guardian:
-            return error_response("Guardian not found", 404)
-
-        return success_response(
-            data={
-                "guardian_id": guardian.guardian_id,
-                "username": guardian.username
-            },
-            message="Token is valid"
-        )
-    except Exception as e:
-        return error_response("Invalid or expired token", 401, str(e))
