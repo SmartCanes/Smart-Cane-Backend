@@ -63,7 +63,7 @@ def validate_device_serial():
             message="Device serial is invalid"
         )
 
-    if device.vip_id is not None:
+    if device.is_paired is not None:
         return success_response(
             data={"valid": False, "reason": "already_paired"},
             message="Device is already paired to another guardian"
