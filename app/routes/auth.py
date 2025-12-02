@@ -50,7 +50,7 @@ def send_otp():
 
         # Generate OTP
         otp_code = generate_otp()
-        expiration_time = datetime.now(timezone.utc) + timedelta(minutes=10)
+        expiration_time = datetime.now(timezone.utc) + timedelta(minutes=5)
 
         # Store OTP in database
         otp_record = OTP(
