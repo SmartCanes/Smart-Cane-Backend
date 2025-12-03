@@ -5,7 +5,7 @@ from flask import Blueprint, jsonify, make_response, request
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
 from app import db
-from app.models import Guardian, OTP
+from app.models import DeviceGuardian, Guardian, OTP
 from app.utils.auth import guardian_required
 from app.utils.responses import success_response, error_response
 from app.utils.email_service import send_otp_email
@@ -225,6 +225,14 @@ def login():
 
         if not guardian or not check_password_hash(guardian.password, password):
             return error_response("Login failed. Please check your email or password and try again.", 401)
+        
+        guardian_device = DeviceGuardian.query.filter_by(guardian_id=guardian.guardian_id).first()
+
+        if not guardian_device:
+            return success_response(
+                data={"guardian_id": guardian.guardian_id, "device_registered": False},
+                message="Login successful, device not registered"
+            )
 
         additional_claims = {
             "guardian_id": guardian.guardian_id,
