@@ -56,14 +56,13 @@ def validate_device_serial():
         return error_response("device_serial is required", 400)
 
     device = Device.query.filter_by(device_serial_number=serial).first()
-
     if not device:
         return success_response(
             data={"valid": False, "reason": "not_found"},
             message="Device serial is invalid"
         )
 
-    if device.is_paired is not None:
+    if device.is_paired:
         return success_response(
             data={"valid": False, "reason": "already_paired"},
             message="Device is already paired to another guardian"
