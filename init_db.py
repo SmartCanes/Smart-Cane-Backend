@@ -8,9 +8,11 @@ with app.app_context():
     db.create_all()
     print("Database tables created successfully!")
     
-    device = Device(
-        device_serial_number='SC-136902',
-    )
-    db.session.add(device)
-    db.session.commit()
+
+    for i in range(5):
+        device = Device(
+            device_serial_number=f'SC-13690{i+1}',
+        )
+        db.session.add(device)
+        db.session.commit()
     print(f"Device created with ID: {device.device_id}")

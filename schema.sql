@@ -7,6 +7,7 @@
     DROP TABLE IF EXISTS gps_location_tbl;
     DROP TABLE IF EXISTS device_tbl;
     DROP TABLE IF EXISTS otp_tbl;
+    DROP TABLE IF EXISTS login_attempts_tbl;
 
     DROP TABLE IF EXISTS guardian_tbl;
     DROP TABLE IF EXISTS vip_tbl;
@@ -96,6 +97,15 @@
         expires_at datetime NOT NULL,
         used_at timestamp DEFAULT NULL
     );
+
+    CREATE TABLE login_attempts_tbl (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(255) DEFAULT NULL,
+    ip_address VARCHAR(45) DEFAULT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_username_created_at (username, created_at),
+    INDEX idx_ip_address_created_at (ip_address, created_at)
+)
 
 
     CREATE TABLE device_tbl (
