@@ -4,6 +4,7 @@ import string
 from datetime import datetime, timedelta, timezone
 from flask import Blueprint, jsonify, make_response, request
 from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
+from sqlalchemy import or_
 from werkzeug.security import generate_password_hash, check_password_hash
 from app import db
 from app.models import DeviceGuardian, Guardian, OTP, LoginAttempt
@@ -135,43 +136,6 @@ def is_login_allowed(username=None, ip_address=None, max_attempts=5, window_minu
     failed_attempts = query.count()
     return failed_attempts < max_attempts
 
-
-
-def get_login_block_info(username, ip_address):
-    WINDOW_MINUTES = 30
-    MAX_ATTEMPTS = 5
-
-    now = datetime.now(timezone.utc)
-    window_start = now - timedelta(minutes=WINDOW_MINUTES)
-
-    LoginAttempt.query.filter(LoginAttempt.created_at < window_start).delete()
-    db.session.commit()
-
-    attempts = LoginAttempt.query.filter(
-        LoginAttempt.username == username,
-        LoginAttempt.ip_address == ip_address,
-        LoginAttempt.created_at >= window_start
-    ).all()
-
-    attempt_count = len(attempts)
-
-    if attempt_count >= MAX_ATTEMPTS:
-        oldest_attempt = min(attempts, key=lambda a: a.created_at)
-        retry_after = int((oldest_attempt.created_at.replace(tzinfo=timezone.utc) + timedelta(minutes=WINDOW_MINUTES) - now).total_seconds())
-
-        return {
-            "allowed": False,
-            "retry_after": retry_after,
-            "remaining_attempts": 0
-        }
-
-    return {
-        "allowed": True,
-        "remaining_attempts": MAX_ATTEMPTS - attempt_count,
-        "retry_after": 0
-    }
-
-
 @auth_bp.route('/check-credentials', methods=['POST'])
 def check_credentials():
     try:
@@ -262,6 +226,45 @@ def register():
         db.session.rollback()
         return error_response("Registration failed", 500, str(e))
 
+
+def get_login_block_info(username, ip_address, window_minutes=30, free_attempts=5):
+    LOCKOUTS = [60, 180, 600, 1800]  
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(minutes=window_minutes)
+
+    # Get recent attempts for username or IP within window
+    recent_attempts = LoginAttempt.query.filter(
+        or_(LoginAttempt.username == username, LoginAttempt.ip_address == ip_address),
+        LoginAttempt.created_at >= window_start
+    ).order_by(LoginAttempt.created_at.asc()).all()
+
+    attempts_count = len(recent_attempts)
+
+    if attempts_count <= free_attempts:
+        # Still under free attempts → allowed, no cooldown
+        remaining_attempts = max(0, free_attempts - attempts_count)
+        return {"allowed": True, "remaining_attempts": remaining_attempts, "retry_after": 0}
+
+    # Determine lockout index (progressive, after free_attempts)
+    lockout_index = min(attempts_count - free_attempts - 1, len(LOCKOUTS) - 1)
+    lockout_seconds = LOCKOUTS[lockout_index]
+
+    # Last attempt timestamp
+    last_attempt_time = recent_attempts[-1].created_at
+    if last_attempt_time.tzinfo is None:
+        last_attempt_time = last_attempt_time.replace(tzinfo=timezone.utc)
+
+    retry_after = max(0, int((last_attempt_time + timedelta(seconds=lockout_seconds) - now).total_seconds()))
+
+    allowed = retry_after == 0
+    remaining_attempts = 0
+
+    return {
+        "allowed": allowed,
+        "remaining_attempts": remaining_attempts,
+        "retry_after": retry_after
+    }
+
 @auth_bp.route('/login', methods=['POST'])
 def login():
     try:
@@ -273,6 +276,7 @@ def login():
         if not username or not password:
             return error_response("Username and password required", 400)
 
+        # Check progressive lockout
         block_info = get_login_block_info(username=username, ip_address=ip_addr)
         if not block_info["allowed"]:
             return error_response(
@@ -282,20 +286,16 @@ def login():
 
         guardian = Guardian.query.filter_by(username=username).first()
 
+        # Failed login
         if not guardian or not check_password_hash(guardian.password, password):
             attempt = LoginAttempt(username=username, ip_address=ip_addr)
             db.session.add(attempt)
             db.session.commit()
             return error_response("Login failed. Please check your username or password.", 401)
 
-        # Success → proceed
+        # Successful login → proceed
         guardian_device = DeviceGuardian.query.filter_by(guardian_id=guardian.guardian_id).first()
-
-        if not guardian_device:
-            return success_response(
-                data={"guardian_id": guardian.guardian_id, "device_registered": False},
-                message="Login successful, device not registered"
-            )
+        device_registered = bool(guardian_device)
 
         # JWT claims
         additional_claims = {
@@ -307,31 +307,33 @@ def login():
         user_data = model_to_dict(
             guardian,
             include_fields=[
-                'guardian_id',
-                'username',
-                'guardian_name',
-                'email',
-                'contact_number',
-                'role',
-                'guardian_image_url',
+                'guardian_id', 'username', 'guardian_name', 'email', 'contact_number',
+                'role', 'relationship_to_vip', 'province', 'city', 'barangay',
+                'street_address', 'guardian_image_url'
             ]
         )
 
         response_body, status_code = success_response(
-            data=user_data,
+            data={**user_data, "device_registered": device_registered},
             message="Login successful"
         )
 
         response = make_response(response_body, status_code)
-        set_access_cookies(response, create_access_token(identity=str(guardian.guardian_id), additional_claims=additional_claims))
-        set_refresh_cookies(response, create_refresh_token(identity=str(guardian.guardian_id)))
+        set_access_cookies(
+            response,
+            create_access_token(identity=str(guardian.guardian_id), additional_claims=additional_claims)
+        )
+        set_refresh_cookies(
+            response,
+            create_refresh_token(identity=str(guardian.guardian_id))
+        )
 
         return response
 
     except Exception as e:
         print(f"Login error: {e}")
         return error_response("Login failed", 500, str(e))
-
+    
 @auth_bp.route('/logout', methods=['POST'])
 def logout():
     try:
