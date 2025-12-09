@@ -12,11 +12,19 @@ from app.utils.email_service import send_otp_email
 from flask_jwt_extended import decode_token
 from flask_jwt_extended import set_access_cookies, set_refresh_cookies
 from flask_jwt_extended import get_jwt
-
+from app.utils.password_email_service import send_password_reset_email
 from app.utils.serializer import model_to_dict
+from datetime import datetime, timedelta, timezone
+from app.utils.password_email_service import send_password_reset_email
+from app.utils.serializer import model_to_dict
+
+
 
 auth_bp = Blueprint('auth', __name__)
 
+
+
+# correct
 def generate_otp(length=6):
     """Generate a random numeric OTP"""
     return ''.join(random.choices(string.digits, k=length))
@@ -396,3 +404,111 @@ def get_profile():
 
     except Exception as e:
         return error_response("Failed to fetch profile", 500, str(e))
+
+
+# forgot pass logics
+# --------------------------------------------------
+# 1. REQUEST OTP
+# --------------------------------------------------
+@auth_bp.route('/forgot-password/request', methods=['POST'])
+def forgot_password_request():
+    try:
+        data = request.get_json()
+        email = data.get('email')
+
+        if not email:
+            return jsonify({"message": "Email is required"}), 400
+
+        # Check if user exists
+        user = Guardian.query.filter_by(email=email).first()
+        if not user:
+            return jsonify({"message": "Email not found"}), 404
+
+        # Generate OTP (6 digits)
+        otp_code = str(random.randint(100000, 999999))
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+
+        # Save OTP to database
+        otp = OTP(
+            email=email,
+            otp_code=otp_code,
+            expires_at=expires_at
+        )
+
+        db.session.add(otp)
+        db.session.commit()
+
+        # Send email
+        send_password_reset_email(email, otp_code, user.guardian_name)
+
+        return jsonify({"message": "OTP sent to email"}), 200
+
+    except Exception as e:
+        print("Forgot password error:", str(e))
+        return jsonify({"message": "Internal server error"}), 500
+
+
+# --------------------------------------------------
+# 2. VERIFY OTP
+# --------------------------------------------------
+@auth_bp.route('/forgot-password/verify', methods=['POST'])
+def verify_forgot_password_otp():
+    data = request.get_json()
+    email = data.get('email')
+    otp_code = data.get('otp_code')
+
+    if not email or not otp_code:
+        return jsonify({"success": False, "message": "Email and OTP are required"}), 400
+
+    otp = OTP.query.filter_by(
+        email=email,
+        otp_code=otp_code,
+        is_used=False
+    ).first()
+
+    if not otp:
+        return jsonify({"success": False, "message": "Invalid OTP"}), 400
+
+    # --- FIX STARTS HERE ---
+    expires_at = otp.expires_at
+
+    # Convert to timezone-aware if naive
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    # Compare safely
+    if datetime.now(timezone.utc) > expires_at:
+        return jsonify({"success": False, "message": "OTP expired"}), 400
+    # --- FIX ENDS HERE ---
+
+    # Mark OTP as used
+    otp.is_used = True
+    otp.used_at = datetime.now(timezone.utc)
+    db.session.commit()
+
+    return jsonify({"success": True, "message": "OTP verified"}), 200
+
+
+
+# --------------------------------------------------
+# 3. RESET PASSWORD
+# --------------------------------------------------
+@auth_bp.route('/forgot-password/reset', methods=['POST'])
+def reset_forgot_password():
+    data = request.get_json()
+    email = data.get('email')
+    new_password = data.get('new_password')
+
+    if not email or not new_password:
+        return jsonify({"message": "Email and new password are required"}), 400
+
+    user = Guardian.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({"message": "User not found"}), 404
+
+    # Update password
+    user.set_password(new_password)
+    db.session.commit()
+
+    return jsonify({"message": "Password updated successfully"}), 200
