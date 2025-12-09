@@ -24,7 +24,7 @@ class LoginAttempt(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(255), nullable=True)
     ip_address = db.Column(db.String(45), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.now(timezone.utc))
+    created_at = db.Column(db.TIMESTAMP, default=datetime.now(timezone.utc))
 
 class VIP(db.Model):
     __tablename__ = 'vip_tbl'
