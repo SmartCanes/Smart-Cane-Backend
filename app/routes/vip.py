@@ -1,6 +1,6 @@
 from flask import Blueprint, request
 from app import db
-from app.models import VIP
+from app.models import VIP, VIPGuardian
 from app.utils.auth import guardian_required
 from app.utils.responses import success_response, error_response, paginated_response
 
@@ -27,6 +27,15 @@ def create_vip(guardian):
         db.session.add(vip)
         db.session.commit()
         
+        # Create the VIP–Guardian association
+        vip_guardian = VIPGuardian(
+            vip_id=vip.vip_id,
+            guardian_id=guardian.guardian_id,
+            relationship_to_vip=data.get('relationship_to_vip')  # optional field
+        )
+        db.session.add(vip_guardian)
+        db.session.commit()
+        
         return success_response(
             data={"vip_id": vip.vip_id},
             message="VIP created successfully",
@@ -36,7 +45,7 @@ def create_vip(guardian):
     except Exception as e:
         db.session.rollback()
         return error_response("Failed to create VIP", 500, str(e))
-
+    
 @vip_bp.route('', methods=['GET'])
 @guardian_required
 def get_all_vips(guardian):

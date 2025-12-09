@@ -27,6 +27,7 @@ CREATE TABLE guardian_tbl (
     city VARCHAR(100),
     barangay VARCHAR(100),
     province VARCHAR(100),
+    village VARCHAR(100),
     street_address TEXT,
     role ENUM('primary_guardian', 'secondary_guardian', 'guardian') DEFAULT 'guardian',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
