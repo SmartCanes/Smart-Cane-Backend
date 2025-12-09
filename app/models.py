@@ -57,10 +57,10 @@ class Guardian(db.Model):
     guardian_image_url = db.Column(db.String(500))
     email = db.Column(db.String(255), nullable=False, unique=True)
     contact_number = db.Column(db.String(20))
-    relationship_to_vip = db.Column(db.String(100))
     province = db.Column(db.String(100))
     city = db.Column(db.String(100))
     barangay = db.Column(db.String(100))
+    village = db.Column(db.String(100))
     street_address = db.Column(db.Text)
     role = db.Column(db.String(50), default='guardian')
     created_at = db.Column(db.TIMESTAMP,  default=lambda: datetime.now(timezone.utc))
@@ -88,6 +88,21 @@ class Device(db.Model):
     updated_at = db.Column(db.TIMESTAMP,  default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     guardian_links = db.relationship('DeviceGuardian', backref='device', lazy=True)
+
+class VIPGuardian(db.Model):
+    __tablename__ = 'vip_guardian_tbl'
+    __table_args__ = {'schema': 'smart_cane_db'}
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    vip_id = db.Column(db.Integer, db.ForeignKey('smart_cane_db.vip_tbl.vip_id'), nullable=False)
+    guardian_id = db.Column(db.Integer, db.ForeignKey('smart_cane_db.guardian_tbl.guardian_id'), nullable=False)
+    relationship_to_vip = db.Column(db.String(100), nullable=True)
+    assigned_at = db.Column(db.TIMESTAMP, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        db.UniqueConstraint('vip_id', 'guardian_id', name='_vip_guardian_uc'),
+        {'schema': 'smart_cane_db'}
+    )
 
 class DeviceGuardian(db.Model):
     __tablename__ = 'device_guardian_tbl'

@@ -179,7 +179,8 @@ def register():
             'guardian_name',
             'email',
             'contact_number',
-            'relationship_to_vip',
+            # 'relationship_to_vip',
+            'village',
             'province',
             'city',
             'barangay',
@@ -202,10 +203,10 @@ def register():
             guardian_name=data['guardian_name'],
             email=data['email'],
             contact_number=data.get('contact_number'),
-            relationship_to_vip=data.get('relationship_to_vip'),
             province=data.get('province'),
             city=data.get('city'),
             barangay=data.get('barangay'),
+            village=data.get('village'),
             street_address=data.get('street_address'),
             guardian_image_url=data.get('guardian_image_url')
         )
