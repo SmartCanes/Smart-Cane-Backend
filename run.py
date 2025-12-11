@@ -1,11 +1,14 @@
 import os
 from dotenv import load_dotenv
 from app import create_app
+from flask_cors import CORS  
 
 # Load environment variables
 load_dotenv()
 
 app = create_app()
+
+
 
 if __name__ == '__main__':
     ssl_cert = os.getenv("PUBLIC_CERTIFICATE_KEY")
