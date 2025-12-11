@@ -91,8 +91,8 @@ def update_guardian(guardian, guardian_id):
                 return error_response("Username already exists", 400)
         
         updatable_fields = [
-            'guardian_name', 'email', 'contact_number', 'relationship_to_vip',
-            'province', 'city', 'barangay', 'street_address', 'guardian_image_url'
+            'guardian_name', 'email', 'contact_number',
+            'province', 'city', 'barangay', 'village', 'street_address', 'guardian_image_url'
         ]
         
         for field in updatable_fields:

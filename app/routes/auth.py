@@ -309,7 +309,7 @@ def login():
             guardian,
             include_fields=[
                 'guardian_id', 'username', 'guardian_name', 'email', 'contact_number',
-                'role', 'relationship_to_vip', 'province', 'city', 'barangay',
+                'role', 'province', 'city', 'barangay', 'village',
                 'street_address', 'guardian_image_url'
             ]
         )
