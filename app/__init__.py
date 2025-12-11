@@ -12,7 +12,7 @@ db = SQLAlchemy()
 jwt = JWTManager()
 
 def create_app():
-
+    DEV_MODE = os.environ.get('DEV_MODE', 'development') == "development"
     # FORCE load .env from the backend root directory
     backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     env_path = os.path.join(backend_root, ".env")
@@ -27,13 +27,18 @@ def create_app():
 
     app = Flask(__name__)
 
-    CORS(app,
-    supports_credentials=True,
-    resources={
-        r"/*": {
-            "origins": "http://localhost:5173"
-        }
-   })
+    if DEV_MODE:
+    # Dev mode settings
+        CORS(app,
+        supports_credentials=True,
+        resources={r"/*": {"origins": "http://localhost:5173"}})
+        app.config['JWT_COOKIE_SECURE'] = False
+        app.config['JWT_COOKIE_SAMESITE'] = "Lax"
+    else:
+        CORS(app, supports_credentials=True)
+    
+    app.config['JWT_COOKIE_SECURE'] = True
+    app.config['JWT_COOKIE_SAMESITE'] = 'None'
 
     
     # Configuration
@@ -47,8 +52,8 @@ def create_app():
     app.config['JWT_ACCESS_COOKIE_NAME'] = 'access_token'
     app.config['JWT_REFRESH_COOKIE_NAME'] = 'refresh_token'
     # Local dev only
-    app.config['JWT_COOKIE_SECURE'] = False
-    app.config['JWT_COOKIE_SAMESITE'] = "Lax"
+    # app.config['JWT_COOKIE_SECURE'] = True  
+    # app.config['JWT_COOKIE_SAMESITE'] = 'None'  
  
     app.config['JWT_COOKIE_CSRF_PROTECT'] = False  
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=15)  

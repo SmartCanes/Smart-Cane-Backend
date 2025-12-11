@@ -220,7 +220,7 @@ def register():
         )
 
         # Hash password before saving
-        guardian.password = generate_password_hash(data['password'])
+        guardian.set_password(data['password'])
 
         db.session.add(guardian)
         db.session.commit()
@@ -296,7 +296,7 @@ def login():
         guardian = Guardian.query.filter_by(username=username).first()
 
         # Failed login
-        if not guardian or not check_password_hash(guardian.password, password):
+        if not guardian or not guardian.check_password(password):
             attempt = LoginAttempt(username=username, ip_address=ip_addr)
             db.session.add(attempt)
             db.session.commit()
@@ -516,12 +516,11 @@ def forgot_password_request():
         # Send email
         send_password_reset_email(email, otp_code, user.guardian_name)
 
-        return jsonify({"message": "OTP sent to email"}), 200
+        return jsonify({"success": True, "message": "OTP sent to email"}), 200
 
     except Exception as e:
         print("Forgot password error:", str(e))
-        return jsonify({"message": "Internal server error"}), 500
-
+        return jsonify({"success": False, "message": "Internal server error"}), 500
 
 # --------------------------------------------------
 # 2. VERIFY OTP
@@ -562,8 +561,6 @@ def verify_forgot_password_otp():
     db.session.commit()
 
     return jsonify({"success": True, "message": "OTP verified"}), 200
-
-
 
 # --------------------------------------------------
 # 3. RESET PASSWORD
