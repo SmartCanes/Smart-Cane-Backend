@@ -20,11 +20,7 @@ from datetime import datetime, timedelta, timezone
 from app.utils.password_email_service import send_password_reset_email
 from app.utils.serializer import model_to_dict
 
-
-
 auth_bp = Blueprint('auth', __name__)
-
-
 
 # correct
 def generate_otp(length=6):
@@ -301,6 +297,14 @@ def login():
             db.session.add(attempt)
             db.session.commit()
             return error_response("Login failed. Please check your username or password.", 401)
+        
+        LoginAttempt.query.filter(
+            or_(
+                LoginAttempt.username == username,
+                LoginAttempt.ip_address == ip_addr
+            )
+        ).delete()
+        db.session.commit()
 
         # Successful login → proceed
         guardian_device = DeviceGuardian.query.filter_by(guardian_id=guardian.guardian_id).first()
@@ -452,7 +456,7 @@ def verify_token():
 @auth_bp.route('/profile', methods=['GET'])
 @jwt_required()
 def get_profile():
-    try:
+    try:                                                
         guardian_id = get_jwt_identity()
         guardian = Guardian.query.get(guardian_id)
 
