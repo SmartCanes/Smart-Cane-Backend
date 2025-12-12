@@ -128,7 +128,7 @@ def verify_otp():
         db.session.rollback()
         return error_response("OTP verification failed", 500, str(e))
 
-def is_login_allowed(username=None, ip_address=None, max_attempts=5, window_minutes=15):
+def is_login_allowed(username=None, ip_address=None, max_attempts=3, window_minutes=15):
     time_window = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
     query = LoginAttempt.query.filter(LoginAttempt.created_at >= time_window)
     
@@ -232,7 +232,7 @@ def register():
         return error_response("Registration failed", 500, str(e))
 
 
-def get_login_block_info(username, ip_address, window_minutes=30, free_attempts=5):
+def get_login_block_info(username, ip_address, window_minutes=30, free_attempts=3):
     LOCKOUTS = [60, 180, 600, 1800]  
     now = datetime.now(timezone.utc)
     window_start = now - timedelta(minutes=window_minutes)
