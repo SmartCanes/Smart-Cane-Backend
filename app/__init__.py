@@ -14,7 +14,6 @@ jwt = JWTManager()
 
 def create_app():
     DEV_MODE = os.environ.get("DEV_MODE", "development") == "development"
-    # FORCE load .env from the backend root directory
     backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     env_path = os.path.join(backend_root, ".env")
 
@@ -25,21 +24,30 @@ def create_app():
     # DEBUG: Check if env variables are loaded
     print("DATABASE_URL:", os.environ.get("DATABASE_URL"))
     print("JWT_SECRET_KEY:", os.environ.get("JWT_SECRET_KEY"))
+    print("FRONTEND_URL:", os.environ.get("FRONTEND_URL"))
 
     app = Flask(__name__)
 
-    # if DEV_MODE:
-    # # Dev mode settings
-    #     CORS(app,
-    #     supports_credentials=True,
-    #     resources={r"/*": {"origins": "http://localhost:5173"}})
-    #     app.config['JWT_COOKIE_SECURE'] = False
-    #     app.config['JWT_COOKIE_SAMESITE'] = "Lax"
-    # else:
-    CORS(app, supports_credentials=True)
-
-    app.config["JWT_COOKIE_SECURE"] = True
-    app.config["JWT_COOKIE_SAMESITE"] = "None"
+    if DEV_MODE:
+        app.config["JWT_COOKIE_SECURE"] = False
+        app.config["JWT_COOKIE_SAMESITE"] = "Lax"
+        CORS(
+            app,
+            supports_credentials=True,
+            resources={
+                r"/*": {
+                    "origins": os.environ.get("FRONTEND_URL", "http://localhost:5173")
+                }
+            },
+        )
+    else:
+        app.config["JWT_COOKIE_SECURE"] = True
+        app.config["JWT_COOKIE_SAMESITE"] = "None"
+        CORS(
+            app,
+            supports_credentials=True,
+            resources={r"/*": {"origins": "https://yourdomain.com"}},
+        )
 
     # Configuration
     app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
@@ -62,13 +70,13 @@ def create_app():
     db.init_app(app)
     jwt.init_app(app)
 
-    # @app.before_request
-    # def handle_options():
-    #  if request.method == "OPTIONS":
-    #     # Respond with 200 OK and CORS headers
-    #     response = jsonify({"success": True})
-    #     response.status_code = 200
-    #     return response
+    @app.before_request
+    def handle_options():
+        if request.method == "OPTIONS":
+            # Respond with 200 OK and CORS headers
+            response = jsonify({"success": True})
+            response.status_code = 200
+            return response
 
     # Register blueprints
     from app.routes.auth import auth_bp
