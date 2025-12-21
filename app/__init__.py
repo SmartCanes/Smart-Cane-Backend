@@ -1,15 +1,33 @@
 import os
-from flask import Flask, app, jsonify, request
+from flask import Flask, jsonify, request
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager
 from dotenv import load_dotenv
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import text
 from flask_cors import CORS
+
+from app.utils.responses import error_response
 
 
 db = SQLAlchemy()
 jwt = JWTManager()
+
+limiter = Limiter(
+    key_func=get_remote_address, default_limits=[], storage_uri="memory://"
+)
+
+
+def register_limiter_handlers(app: Flask):
+    @app.errorhandler(429)
+    def rate_limit_handler(e):
+        return error_response(
+            "Too many requests. Please try again later.",
+            status_code=429,
+            details=str(e),  # optional, you can remove if you don't need it
+        )
 
 
 def create_app():
@@ -69,6 +87,8 @@ def create_app():
     # Initialize extensions
     db.init_app(app)
     jwt.init_app(app)
+    limiter.init_app(app)
+    register_limiter_handlers(app)
 
     @app.before_request
     def handle_options():

@@ -14,6 +14,7 @@ from app.models import DeviceGuardian, Guardian, OTP, LoginAttempt
 from app.utils.auth import guardian_required
 from app.utils.responses import success_response, error_response
 from app.utils.email_service import send_otp_email
+from app import limiter
 from flask_jwt_extended import decode_token
 from flask_jwt_extended import set_access_cookies, set_refresh_cookies
 from flask_jwt_extended import get_jwt
@@ -142,6 +143,7 @@ def is_login_allowed(username=None, ip_address=None, max_attempts=3, window_minu
 
 
 @auth_bp.route("/check-credentials", methods=["POST"])
+@limiter.limit("5 per minute")
 def check_credentials():
     try:
         data = request.get_json()
