@@ -386,14 +386,9 @@ def logout():
         return error_response("Logout failed", 500, str(e))
 
 @auth_bp.route('/refresh', methods=['POST'])
-@jwt_required(refresh=True)  
-def refresh():
+@guardian_required
+def refresh(guardian):
     try:
-        guardian_id = get_jwt_identity()
-        guardian = Guardian.query.get(guardian_id)
-        if not guardian:
-            return error_response("User not found", 404)
-        
         additional_claims = {
             "guardian_id": guardian.guardian_id,
             "username": guardian.username,
@@ -417,15 +412,10 @@ def refresh():
         return error_response("Invalid refresh token", 401, str(e))
     
 @auth_bp.route('/verify-token', methods=['GET'])
-@jwt_required()
-def verify_token():
+@guardian_required
+def verify_token(guardian):
     try:
         try:
-            guardian_id = get_jwt_identity() 
-            guardian = Guardian.query.get(guardian_id)
-            if not guardian:
-                return error_response("User not found", 404)
-            
             jwt_data = get_jwt()
             
             import time
@@ -454,15 +444,9 @@ def verify_token():
     
 # Get guardian profile
 @auth_bp.route('/profile', methods=['GET'])
-@jwt_required()
-def get_profile():
+@guardian_required
+def get_profile(guardian):
     try:                                                
-        guardian_id = get_jwt_identity()
-        guardian = Guardian.query.get(guardian_id)
-
-        if not guardian:
-            return error_response("Guardian not found", 404)
-
         profile_data = {
             "guardian_id": guardian.guardian_id,
             "username": guardian.username,
