@@ -12,6 +12,13 @@ from app import db
 from app.models import DeviceGuardian, Guardian, OTP, LoginAttempt
 from app.utils.responses import success_response, error_response
 from app.utils.email_service import send_otp_email
+from app import limiter
+from flask_jwt_extended import decode_token
+from flask_jwt_extended import set_access_cookies, set_refresh_cookies
+from flask_jwt_extended import get_jwt
+from app.utils.password_email_service import send_password_reset_email
+from app.utils.serializer import model_to_dict
+from datetime import datetime, timedelta, timezone
 from app.utils.password_email_service import send_password_reset_email
 from app.utils.serializer import model_to_dict
 # Add these imports at the top of auth.py if not already present
@@ -141,6 +148,7 @@ def is_login_allowed(username=None, ip_address=None, max_attempts=3, window_minu
 
 
 @auth_bp.route("/check-credentials", methods=["POST"])
+@limiter.limit("5 per minute")
 def check_credentials():
     try:
         data = request.get_json()
