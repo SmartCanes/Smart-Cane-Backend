@@ -9,6 +9,8 @@ import os
 from datetime import datetime, timezone
 import uuid
 
+from app.utils.serializer import model_to_dict
+
 guardian_bp = Blueprint("guardian", __name__)
 
 
@@ -148,7 +150,6 @@ def get_my_profile(guardian):
 @guardian_bp.route("/profile", methods=["PUT"])
 @guardian_required
 def update_my_profile(guardian):
-    """Update current logged-in guardian's profile"""
     try:
         data = request.get_json(silent=True)
 
@@ -167,69 +168,42 @@ def update_my_profile(guardian):
             if existing_guardian:
                 return error_response("Username already exists", 400)
 
-        field_mapping = {
-            "fullName": "guardian_name",
-            "name": "guardian_name",
-            "guardian_name": "guardian_name",
-            "email": "email",
-            "cellphone": "contact_number",
-            "contact_number": "contact_number",
-            "avatar": "guardian_image_url",
-            "guardian_image_url": "guardian_image_url",
-            "province": "province",
-            "city": "city",
-            "barangay": "barangay",
-            "village": "village",
-            "street_address": "street_address",
-            "address": "street_address",  
-        }
+        allowed_fields = [
+            "guardian_name",
+            "email",
+            "contact_number",
+            "province",
+            "city",
+            "barangay",
+            "village",
+            "street_address",
+        ]
 
-        for frontend_field, model_field in field_mapping.items():
-            if frontend_field in data:
-                if frontend_field == "address" and isinstance(
-                    data[frontend_field], str
-                ):
-                    setattr(guardian, model_field, data[frontend_field])
-                elif data[frontend_field] is not None:
-                    setattr(guardian, model_field, data[frontend_field])
+        for field in allowed_fields:
+            if field in data and data[field] is not None:
+                setattr(guardian, field, data[field])
 
-        if "password" in data and data["password"]:
-            guardian.set_password(data["password"])
+            # Update password if provided
+            if "password" in data and data["password"]:
+                guardian.set_password(data["password"])
+
+            if "guardian_image_url" in data and data["guardian_image_url"]:
+                guardian.guardian_image_url = data["guardian_image_url"]
+
+        base_url = request.host_url.rstrip('/')
+        guardian_image_url = (
+            f"{base_url}/uploads/{guardian.guardian_image_url}"
+            if guardian.guardian_image_url else None
+        )
 
         db.session.commit()
 
-        guardian_image_url = None
-        if guardian.guardian_image_url:
-            base_url = request.host_url.rstrip('/')
-            guardian_image_url = f"{base_url}/uploads/{guardian.guardian_image_url}"
-
-        updated_info = {
-            "id": guardian.guardian_id,
-            "guardian_id": guardian.guardian_id,
-            "username": guardian.username,
-            "name": guardian.guardian_name or guardian.username,
-            "guardian_name": guardian.guardian_name,
-            "email": guardian.email,
-            "contact_number": guardian.contact_number,
-            "cellphone": guardian.contact_number,
-            "guardian_image_url": guardian_image_url,  # Full URL
-            "avatar": guardian_image_url,  # Full URL
-            "province": guardian.province,
-            "city": guardian.city,
-            "barangay": guardian.barangay,
-            "village": guardian.village,
-            "street_address": guardian.street_address,
-            "address": f"{guardian.street_address or ''}, {guardian.barangay or ''}, {guardian.city or ''}, {guardian.province or ''}",
-            "role": guardian.role,
-        }
-
         return success_response(
-            data=updated_info, message="Profile updated successfully"
+            data=model_to_dict(guardian), message="Profile updated successfully"
         )
 
     except Exception as e:
         db.session.rollback()
-        print("UPDATE PROFILE ERROR:", e)
         return error_response("Failed to update profile", 500, str(e))
 
 
