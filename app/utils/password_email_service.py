@@ -4,18 +4,19 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.utils import formataddr
 
+
 def send_password_reset_email(recipient_email, otp_code, guardian_name=None):
     """
     Send password reset OTP email using SMTP
     """
     try:
         # Email configuration from environment variables
-        smtp_server = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
-        smtp_port = int(os.environ.get('MAIL_PORT', 587))
-        email_username = os.environ.get('MAIL_USERNAME', '')
-        email_password = os.environ.get('MAIL_PASSWORD', '')
-        sender_name = os.environ.get('MAIL_SENDER_NAME', 'iCane Smart Cane')
-        
+        smtp_server = os.environ.get("MAIL_SERVER", "smtp.gmail.com")
+        smtp_port = int(os.environ.get("MAIL_PORT", 587))
+        email_username = os.environ.get("MAIL_USERNAME", "")
+        email_password = os.environ.get("MAIL_PASSWORD", "")
+        sender_name = os.environ.get("MAIL_SENDER_NAME", "iCane Smart Cane")
+
         # If no email credentials provided, fallback to console output
         if not email_username or not email_password:
             print("=" * 60)
@@ -25,13 +26,13 @@ def send_password_reset_email(recipient_email, otp_code, guardian_name=None):
             print(f"EXPIRES: 5 minutes")
             print("=" * 60)
             return True
-        
+
         # Create message
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = "Password Reset - iCane Smart Cane"
-        msg['From'] = formataddr((sender_name, email_username))
-        msg['To'] = recipient_email
-        
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "Password Reset - iCane Smart Cane"
+        msg["From"] = formataddr((sender_name, email_username))
+        msg["To"] = recipient_email
+
         # HTML email content
         html_content = f"""
         <!DOCTYPE html>
@@ -99,7 +100,7 @@ def send_password_reset_email(recipient_email, otp_code, guardian_name=None):
         </body>
         </html>
         """
-        
+
         # Plain text fallback
         text_content = f"""
         iCane: Smart Cane - Password Reset
@@ -117,20 +118,20 @@ def send_password_reset_email(recipient_email, otp_code, guardian_name=None):
         Best regards,
         iCane Smart Cane Team
         """
-        
+
         # Attach both HTML and plain text versions
-        msg.attach(MIMEText(text_content, 'plain'))
-        msg.attach(MIMEText(html_content, 'html'))
-        
+        msg.attach(MIMEText(text_content, "plain"))
+        msg.attach(MIMEText(html_content, "html"))
+
         # Send email
         with smtplib.SMTP(smtp_server, smtp_port) as server:
             server.starttls()  # Secure the connection
             server.login(email_username, email_password)
             server.send_message(msg)
-        
+
         print(f" Password reset OTP email sent successfully to {recipient_email}")
         return True
-        
+
     except Exception as e:
         print(f"Failed to send password reset OTP email to {recipient_email}: {str(e)}")
         # Fallback to console output

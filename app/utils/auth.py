@@ -4,6 +4,7 @@ from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
 from app.models import Guardian, DeviceGuardian
 from app.utils.responses import error_response
 
+
 def guardian_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -24,12 +25,14 @@ def guardian_required(f):
 
     return decorated_function
 
+
 def guardian_with_device_required(f):
     @wraps(f)
     def decorated_function(guardian, *args, **kwargs):
         devices = DeviceGuardian.query.filter_by(guardian_id=guardian.guardian_id).all()
         if not devices:
             return jsonify({"success": False, "message": "No devices paired."}), 403
-        kwargs['devices'] = devices
+        kwargs["devices"] = devices
         return f(guardian, *args, **kwargs)
+
     return decorated_function
