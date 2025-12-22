@@ -1,163 +1,46 @@
-from ipaddress import ip_address
+from datetime import datetime, timedelta, timezone
 import random
 import string
-from datetime import datetime, timedelta, timezone
-from flask import Blueprint, jsonify, make_response, request
-from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
+from flask import Blueprint, make_response, request
+from flask_jwt_extended import (
+    create_access_token, create_refresh_token, 
+    jwt_required, get_jwt_identity, get_jwt,
+    set_access_cookies, set_refresh_cookies
+)
 from sqlalchemy import or_
-from werkzeug.security import generate_password_hash, check_password_hash
 from app import db
 from app.models import DeviceGuardian, Guardian, OTP, LoginAttempt
-from app.utils.auth import guardian_required
 from app.utils.responses import success_response, error_response
 from app.utils.email_service import send_otp_email
-from flask_jwt_extended import decode_token
-from flask_jwt_extended import set_access_cookies, set_refresh_cookies
-from flask_jwt_extended import get_jwt
 from app.utils.password_email_service import send_password_reset_email
 from app.utils.serializer import model_to_dict
-from datetime import datetime, timedelta, timezone
-from app.utils.password_email_service import send_password_reset_email
-from app.utils.serializer import model_to_dict
+# Add these imports at the top of auth.py if not already present
+from flask import request, current_app
+from werkzeug.utils import secure_filename
+import os
+from datetime import datetime, timezone
+import uuid
+
 
 auth_bp = Blueprint('auth', __name__)
 
-# correct
-def generate_otp(length=6):
-    """Generate a random numeric OTP"""
-    return ''.join(random.choices(string.digits, k=length))
 
-def check_otp_rate_limit(email):
-    """
-    Check if user has exceeded OTP request limits
-    """
-    # Count OTP requests in the last hour
-    one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
-    recent_otps = OTP.query.filter(
-        OTP.email == email,
-        OTP.created_at >= one_hour_ago
-    ).count()
-    
-    # Limit to 3 OTP requests per hour
-    return recent_otps < 3
-
-@auth_bp.route('/send-otp', methods=['POST'])
-def send_otp():
-    try:
-        data = request.get_json()
-        email = data.get('email')
-
-        if not email:
-            return error_response("Email is required", 400)
-
-        # Check rate limit
-        if not check_otp_rate_limit(email):
-            return error_response("Too many OTP requests. Please try again later.", 429)
-
-        # Generate OTP
-        otp_code = generate_otp()
-        expiration_time = datetime.now(timezone.utc) + timedelta(minutes=10)
-
-        # Store OTP in database
-        otp_record = OTP(
-            email=email,
-            otp_code=otp_code,
-            expires_at=expiration_time,
-            is_used=False
-        )
-
-        db.session.add(otp_record)
-        db.session.commit()
-
-        # Send OTP via email
-        email_sent = send_otp_email(
-            recipient_email=email,
-            otp_code=otp_code
-        )
-
-        if not email_sent:
-            return error_response("Failed to send OTP email", 500)
-
-        return success_response(
-            message="OTP sent successfully",
-            status_code=200
-        )
-
-    except Exception as e:
-        db.session.rollback()
-        return error_response("Failed to send OTP", 500, str(e))
-
-@auth_bp.route('/verify-otp', methods=['POST'])
-def verify_otp():
-    try:
-        data = request.get_json()
-        email = data.get('email')
-        otp_code = data.get('otp_code')
-
-        if not email or not otp_code:
-            return error_response("Email and OTP code are required", 400)
-
-        # Find the most recent valid OTP for this email
-        otp_record = OTP.query.filter_by(
-            email=email,
-            is_used=False
-        ).order_by(OTP.created_at.desc()).first()
-
-        if not otp_record:
-            return error_response("No OTP found for this email. Please request a new OTP.", 400)
-
-        # Check if OTP is expired
-        if datetime.now(timezone.utc) > otp_record.expires_at.replace(tzinfo=timezone.utc):
-            return error_response("OTP has expired. Please request a new OTP.", 400)
-
-        # Check if OTP matches
-        if otp_record.otp_code != otp_code:
-            return error_response("Invalid OTP code. Please try again.", 400)
-
-        # Mark OTP as used
-        otp_record.is_used = True
-        otp_record.used_at = datetime.now(timezone.utc)
-        db.session.commit()
-
-        return success_response(
-            message="OTP verified successfully",
-            status_code=200
-        )
-
-    except Exception as e:
-        db.session.rollback()
-        return error_response("OTP verification failed", 500, str(e))
-
-def is_login_allowed(username=None, ip_address=None, max_attempts=3, window_minutes=15):
-    time_window = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
-    query = LoginAttempt.query.filter(LoginAttempt.created_at >= time_window)
-    
-    if username:
-        query = query.filter_by(username=username)
-    if ip_address:
-        query = query.filter_by(ip_address=ip_address)
-    
-    failed_attempts = query.count()
-    return failed_attempts < max_attempts
-
+#credentials validations
 @auth_bp.route('/check-credentials', methods=['POST'])
 def check_credentials():
     try:
         data = request.get_json()
 
-        # Check if username exists
         if data.get('username'):
             existing_username = Guardian.query.filter_by(username=data['username']).first()
             if existing_username:
                 return error_response("Username already exists. Please use another username", 400)
 
-        # Check if email exists
         if data.get('email'):
             existing_email = Guardian.query.filter_by(email=data['email']).first()
             if existing_email:
                 return error_response("Email already exists. Please use another email", 400)
 
-        # Check if contact number exists
         if data.get('contact_number'):
             existing_contact = Guardian.query.filter_by(contact_number=data['contact_number']).first()
             if existing_contact:
@@ -171,19 +54,19 @@ def check_credentials():
     except Exception as e:
         return error_response("Credential check failed", 500, str(e))
 
+
+#register
 @auth_bp.route('/register', methods=['POST'])
 def register():
     try:
         data = request.get_json()
 
-        # Required fields
         required_fields = [
             'username',
             'password',
             'guardian_name',
             'email',
             'contact_number',
-            # 'relationship_to_vip',
             'village',
             'province',
             'city',
@@ -195,13 +78,11 @@ def register():
             if not data.get(field):
                 return error_response(f"Missing required field: {field}", 400)
 
-        # Check if username or email already exists
         if Guardian.query.filter_by(username=data['username']).first():
             return error_response("Username already exists, please use another username", 400)
         if Guardian.query.filter_by(email=data['email']).first():
             return error_response("Email already exists", 400)
 
-        # Create new guardian
         guardian = Guardian(
             username=data['username'],
             guardian_name=data['guardian_name'],
@@ -215,7 +96,6 @@ def register():
             guardian_image_url=data.get('guardian_image_url')
         )
 
-        # Hash password before saving
         guardian.set_password(data['password'])
 
         db.session.add(guardian)
@@ -231,13 +111,11 @@ def register():
         db.session.rollback()
         return error_response("Registration failed", 500, str(e))
 
-
 def get_login_block_info(username, ip_address, window_minutes=30, free_attempts=3):
     LOCKOUTS = [60, 180, 600, 1800]  
     now = datetime.now(timezone.utc)
     window_start = now - timedelta(minutes=window_minutes)
 
-    # Get recent attempts for username or IP within window
     recent_attempts = LoginAttempt.query.filter(
         or_(LoginAttempt.username == username, LoginAttempt.ip_address == ip_address),
         LoginAttempt.created_at >= window_start
@@ -246,15 +124,12 @@ def get_login_block_info(username, ip_address, window_minutes=30, free_attempts=
     attempts_count = len(recent_attempts)
 
     if attempts_count <= free_attempts:
-        # Still under free attempts → allowed, no cooldown
         remaining_attempts = max(0, free_attempts - attempts_count)
         return {"allowed": True, "remaining_attempts": remaining_attempts, "retry_after": 0}
 
-    # Determine lockout index (progressive, after free_attempts)
     lockout_index = min(attempts_count - free_attempts - 1, len(LOCKOUTS) - 1)
     lockout_seconds = LOCKOUTS[lockout_index]
 
-    # Last attempt timestamp
     last_attempt_time = recent_attempts[-1].created_at
     if last_attempt_time.tzinfo is None:
         last_attempt_time = last_attempt_time.replace(tzinfo=timezone.utc)
@@ -270,6 +145,8 @@ def get_login_block_info(username, ip_address, window_minutes=30, free_attempts=
         "retry_after": retry_after
     }
 
+
+#login
 @auth_bp.route('/login', methods=['POST'])
 def login():
     try:
@@ -281,7 +158,6 @@ def login():
         if not username or not password:
             return error_response("Username and password required", 400)
 
-        # Check progressive lockout
         block_info = get_login_block_info(username=username, ip_address=ip_addr)
         if not block_info["allowed"]:
             return error_response(
@@ -291,7 +167,6 @@ def login():
 
         guardian = Guardian.query.filter_by(username=username).first()
 
-        # Failed login
         if not guardian or not guardian.check_password(password):
             attempt = LoginAttempt(username=username, ip_address=ip_addr)
             db.session.add(attempt)
@@ -306,11 +181,9 @@ def login():
         ).delete()
         db.session.commit()
 
-        # Successful login → proceed
         guardian_device = DeviceGuardian.query.filter_by(guardian_id=guardian.guardian_id).first()
         device_registered = bool(guardian_device)
 
-        # JWT claims
         additional_claims = {
             "guardian_id": guardian.guardian_id,
             "username": guardian.username,
@@ -347,6 +220,8 @@ def login():
         print(f"Login error: {e}")
         return error_response("Login failed", 500, str(e))
     
+
+#logout   
 @auth_bp.route('/logout', methods=['POST'])
 def logout():
     try:
@@ -385,6 +260,8 @@ def logout():
         print(f"Logout error: {e}")
         return error_response("Logout failed", 500, str(e))
 
+
+#refresh
 @auth_bp.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)  
 def refresh():
@@ -416,6 +293,8 @@ def refresh():
     except Exception as e:
         return error_response("Invalid refresh token", 401, str(e))
     
+
+#token   
 @auth_bp.route('/verify-token', methods=['GET'])
 @jwt_required()
 def verify_token():
@@ -451,8 +330,10 @@ def verify_token():
     except Exception as e:
         print(f"Verify token error: {e}")
         return error_response("Token verification failed", 500, str(e))
+
+
     
-# Get guardian profile
+#guardian profile
 @auth_bp.route('/profile', methods=['GET'])
 @jwt_required()
 def get_profile():
@@ -485,10 +366,234 @@ def get_profile():
         return error_response("Failed to fetch profile", 500, str(e))
 
 
-# forgot pass logics
-# --------------------------------------------------
-# 1. REQUEST OTP
-# --------------------------------------------------
+# OTP's
+def generate_otp(length=6):
+    """Generate a random numeric OTP"""
+    return ''.join(random.choices(string.digits, k=length))
+
+def check_otp_rate_limit(email, purpose='general'):
+    """
+    Check if user has exceeded OTP request limits
+    """
+    one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+    recent_otps = OTP.query.filter(
+        OTP.email == email,
+        OTP.purpose == purpose,  
+        OTP.created_at >= one_hour_ago
+    ).count()
+    
+    return recent_otps < 3
+
+@auth_bp.route('/send-otp', methods=['POST'])
+def send_otp():
+    try:
+        data = request.get_json()
+        email = data.get('email')
+        purpose = data.get('purpose', 'general') 
+
+        if not email:
+            return error_response("Email is required", 400)
+
+        if not check_otp_rate_limit(email, purpose):
+            return error_response("Too many OTP requests. Please try again later.", 429)
+
+        otp_code = generate_otp()
+        expiration_time = datetime.now(timezone.utc) + timedelta(minutes=10)
+
+        otp_record = OTP(
+            email=email,
+            otp_code=otp_code,
+            expires_at=expiration_time,
+            is_used=False,
+            purpose=purpose  
+        )
+
+        db.session.add(otp_record)
+        db.session.commit()
+
+        email_sent = send_otp_email(
+            recipient_email=email,
+            otp_code=otp_code
+        )
+
+        if not email_sent:
+            return error_response("Failed to send OTP email", 500)
+
+        return success_response(
+            message="OTP sent successfully",
+            status_code=200
+        )
+
+    except Exception as e:
+        db.session.rollback()
+        return error_response("Failed to send OTP", 500, str(e))
+
+@auth_bp.route('/verify-otp', methods=['POST'])
+def verify_otp():
+    try:
+        data = request.get_json()
+        email = data.get('email')
+        otp_code = data.get('otp_code')
+        purpose = data.get('purpose', 'general') 
+
+        if not email or not otp_code:
+            return error_response("Email and OTP code are required", 400)
+
+
+        otp_record = OTP.query.filter_by(
+            email=email,
+            is_used=False,
+            purpose=purpose  
+        ).order_by(OTP.created_at.desc()).first()
+
+        if not otp_record:
+            return error_response(f"No OTP found for this email. Please request a new OTP.", 400)
+
+        if datetime.now(timezone.utc) > otp_record.expires_at.replace(tzinfo=timezone.utc):
+            return error_response("OTP has expired. Please request a new OTP.", 400)
+        
+        if otp_record.otp_code != otp_code:
+            return error_response("Invalid OTP code. Please try again.", 400)
+
+        otp_record.is_used = True
+        otp_record.used_at = datetime.now(timezone.utc)
+        db.session.commit()
+
+        return success_response(
+            message="OTP verified successfully",
+            status_code=200
+        )
+
+    except Exception as e:
+        db.session.rollback()
+        return error_response("OTP verification failed", 500, str(e))
+
+#change email otp
+@auth_bp.route('/profile/change-email/request', methods=['POST'])
+@jwt_required()
+def request_email_change():
+    """Request OTP for email change verification"""
+    try:
+        data = request.get_json()
+        new_email = data.get('new_email')
+        
+        if not new_email:
+            return error_response("New email is required", 400)
+        
+        guardian_id = get_jwt_identity()
+        guardian = Guardian.query.get(guardian_id)
+        
+        if not guardian:
+            return error_response("Guardian not found", 404)
+        
+        existing_email = Guardian.query.filter_by(email=new_email).first()
+        if existing_email and existing_email.guardian_id != guardian.guardian_id:
+            return error_response("Email already exists. Please use another email", 400)
+        
+        if not check_otp_rate_limit(new_email, 'email_change'):
+            return error_response("Too many OTP requests. Please try again later.", 429)
+        
+
+        otp_code = generate_otp()
+        expiration_time = datetime.now(timezone.utc) + timedelta(minutes=10)
+        
+        otp_record = OTP(
+            email=new_email,
+            otp_code=otp_code,
+            expires_at=expiration_time,
+            is_used=False,
+            purpose='email_change'
+        )
+        
+        db.session.add(otp_record)
+        db.session.commit()
+        
+        email_sent = send_otp_email(
+            recipient_email=new_email,
+            otp_code=otp_code
+        )
+        
+        if not email_sent:
+            return error_response("Failed to send OTP email", 500)
+        
+        return success_response(
+            message="OTP sent to new email address",
+            status_code=200
+        )
+        
+    except Exception as e:
+        db.session.rollback()
+        return error_response("Failed to process email change request", 500, str(e))
+    
+
+@auth_bp.route('/profile/change-email/verify', methods=['POST'])
+@jwt_required()
+def verify_email_change():
+    """Verify OTP and update email"""
+    try:
+        data = request.get_json()
+        new_email = data.get('new_email')
+        otp_code = data.get('otp_code')
+        
+        if not new_email or not otp_code:
+            return error_response("New email and OTP code are required", 400)
+        
+        guardian_id = get_jwt_identity()
+        guardian = Guardian.query.get(guardian_id)
+        
+        if not guardian:
+            return error_response("Guardian not found", 404)
+        
+        otp_record = OTP.query.filter_by(
+            email=new_email,
+            otp_code=otp_code,
+            is_used=False,
+            purpose='email_change'
+        ).first()
+        
+        if not otp_record:
+            return error_response("Invalid OTP for email change", 400)
+
+        if datetime.now(timezone.utc) > otp_record.expires_at.replace(tzinfo=timezone.utc):
+            return error_response("OTP has expired. Please request a new OTP.", 400)
+        
+        existing_email = Guardian.query.filter_by(email=new_email).first()
+        if existing_email and existing_email.guardian_id != guardian.guardian_id:
+            return error_response("Email already exists. Please use another email", 400)
+
+        old_email = guardian.email
+        guardian.email = new_email
+        
+        otp_record.is_used = True
+        otp_record.used_at = datetime.now(timezone.utc)
+        
+        db.session.commit()
+        
+        return success_response(
+            message="Email updated successfully",
+            data={"old_email": old_email, "new_email": new_email},
+            status_code=200
+        )
+        
+    except Exception as e:
+        db.session.rollback()
+        return error_response("Failed to update email", 500, str(e))
+
+
+def is_login_allowed(username=None, ip_address=None, max_attempts=3, window_minutes=15):
+    time_window = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
+    query = LoginAttempt.query.filter(LoginAttempt.created_at >= time_window)
+    
+    if username:
+        query = query.filter_by(username=username)
+    if ip_address:
+        query = query.filter_by(ip_address=ip_address)
+    
+    failed_attempts = query.count()
+    return failed_attempts < max_attempts
+
+
+#forgot pass
 @auth_bp.route('/forgot-password/request', methods=['POST'])
 def forgot_password_request():
     try:
@@ -496,95 +601,100 @@ def forgot_password_request():
         email = data.get('email')
 
         if not email:
-            return jsonify({"message": "Email is required"}), 400
+            return error_response("Email is required", 400)
 
-        # Check if user exists
         user = Guardian.query.filter_by(email=email).first()
         if not user:
-            return jsonify({"message": "Email not found"}), 404
+            return error_response("Email not found", 404)
 
-        # Generate OTP (6 digits)
         otp_code = str(random.randint(100000, 999999))
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
 
-        # Save OTP to database
         otp = OTP(
             email=email,
             otp_code=otp_code,
-            expires_at=expires_at
+            expires_at=expires_at,
+            purpose='password_reset'
         )
 
         db.session.add(otp)
         db.session.commit()
 
-        # Send email
         send_password_reset_email(email, otp_code, user.guardian_name)
 
-        return jsonify({"success": True, "message": "OTP sent to email"}), 200
+        return success_response(
+            message="OTP sent to email",
+            status_code=200
+        )
 
     except Exception as e:
         print("Forgot password error:", str(e))
-        return jsonify({"success": False, "message": "Internal server error"}), 500
+        return error_response("Failed to process password reset request", 500, str(e))
 
-# --------------------------------------------------
-# 2. VERIFY OTP
-# --------------------------------------------------
 @auth_bp.route('/forgot-password/verify', methods=['POST'])
 def verify_forgot_password_otp():
-    data = request.get_json()
-    email = data.get('email')
-    otp_code = data.get('otp_code')
+    try:
+        data = request.get_json()
+        email = data.get('email')
+        otp_code = data.get('otp_code')
 
-    if not email or not otp_code:
-        return jsonify({"success": False, "message": "Email and OTP are required"}), 400
+        if not email or not otp_code:
+            return error_response("Email and OTP are required", 400)
 
-    otp = OTP.query.filter_by(
-        email=email,
-        otp_code=otp_code,
-        is_used=False
-    ).first()
+        otp = OTP.query.filter_by(
+            email=email,
+            otp_code=otp_code,
+            is_used=False,
+            purpose='password_reset'
+        ).first()
 
-    if not otp:
-        return jsonify({"success": False, "message": "Invalid OTP"}), 400
+        if not otp:
+            return error_response("Invalid OTP", 400)
 
-    # --- FIX STARTS HERE ---
-    expires_at = otp.expires_at
+        expires_at = otp.expires_at
 
-    # Convert to timezone-aware if naive
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
 
-    # Compare safely
-    if datetime.now(timezone.utc) > expires_at:
-        return jsonify({"success": False, "message": "OTP expired"}), 400
-    # --- FIX ENDS HERE ---
+        if datetime.now(timezone.utc) > expires_at:
+            return error_response("OTP expired", 400)
 
-    # Mark OTP as used
-    otp.is_used = True
-    otp.used_at = datetime.now(timezone.utc)
-    db.session.commit()
+        otp.is_used = True
+        otp.used_at = datetime.now(timezone.utc)
+        db.session.commit()
 
-    return jsonify({"success": True, "message": "OTP verified"}), 200
+        return success_response(
+            message="OTP verified",
+            status_code=200
+        )
 
-# --------------------------------------------------
-# 3. RESET PASSWORD
-# --------------------------------------------------
+    except Exception as e:
+        db.session.rollback()
+        return error_response("OTP verification failed", 500, str(e))
+
 @auth_bp.route('/forgot-password/reset', methods=['POST'])
 def reset_forgot_password():
-    data = request.get_json()
-    email = data.get('email')
-    new_password = data.get('new_password')
+    try:
+        data = request.get_json()
+        email = data.get('email')
+        new_password = data.get('new_password')
 
-    if not email or not new_password:
-        return jsonify({"message": "Email and new password are required"}), 400
+        if not email or not new_password:
+            return error_response("Email and new password are required", 400)
 
-    user = Guardian.query.filter_by(email=email).first()
+        user = Guardian.query.filter_by(email=email).first()
 
-    if not user:
-        return jsonify({"message": "User not found"}), 404
+        if not user:
+            return error_response("User not found", 404)
 
-    # Update password
-    user.set_password(new_password)
-    db.session.commit()
+        user.set_password(new_password)
+        db.session.commit()
 
-    return jsonify({"message": "Password updated successfully"}), 200
+        return success_response(
+            message="Password updated successfully",
+            status_code=200
+        )
+
+    except Exception as e:
+        db.session.rollback()
+        return error_response("Failed to reset password", 500, str(e))

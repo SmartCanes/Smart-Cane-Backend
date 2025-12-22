@@ -13,6 +13,7 @@ class OTP(db.Model):
     created_at = db.Column(db.TIMESTAMP,  default=lambda: datetime.now(timezone.utc))
     expires_at = db.Column(db.DateTime, nullable=False)
     used_at = db.Column(db.TIMESTAMP, nullable=True, default=None)
+    purpose = db.Column(db.String(50), default='general')
 
     def __repr__(self):
         return f'<OTP {self.email}>'

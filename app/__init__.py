@@ -1,5 +1,5 @@
 import os
-from flask import Flask, app, jsonify, request
+from flask import Flask, app, jsonify, request, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager
 from dotenv import load_dotenv
@@ -21,13 +21,19 @@ def create_app():
 
     load_dotenv(env_path)
 
-    # DEBUG: Check if env variables are loaded
     print("DATABASE_URL:", os.environ.get("DATABASE_URL"))
     print("JWT_SECRET_KEY:", os.environ.get("JWT_SECRET_KEY"))
     print("FRONTEND_URL:", os.environ.get("FRONTEND_URL"))
 
     app = Flask(__name__)
 
+    base_dir = os.path.abspath(os.path.dirname(__file__))
+    uploads_path = os.path.join(base_dir, 'uploads')
+
+    app.config['UPLOAD_FOLDER'] = uploads_path
+    app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024  # 2MB limit
+    app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+    
     if DEV_MODE:
         app.config["JWT_COOKIE_SECURE"] = False
         app.config["JWT_COOKIE_SAMESITE"] = "Lax"
@@ -49,7 +55,6 @@ def create_app():
             resources={r"/*": {"origins": "https://yourdomain.com"}},
         )
 
-    # Configuration
     app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
         "DATABASE_URL", "mysql+pymysql://root:@localhost:3306/smart_cane_db"
     )
@@ -58,27 +63,20 @@ def create_app():
     app.config["JWT_TOKEN_LOCATION"] = ["cookies"]
     app.config["JWT_ACCESS_COOKIE_NAME"] = "access_token"
     app.config["JWT_REFRESH_COOKIE_NAME"] = "refresh_token"
-    # Local dev only
-    # app.config['JWT_COOKIE_SECURE'] = True
-    # app.config['JWT_COOKIE_SAMESITE'] = 'None'
-
     app.config["JWT_COOKIE_CSRF_PROTECT"] = False
     app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(minutes=15)
     app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=7)
 
-    # Initialize extensions
     db.init_app(app)
     jwt.init_app(app)
 
     @app.before_request
     def handle_options():
         if request.method == "OPTIONS":
-            # Respond with 200 OK and CORS headers
             response = jsonify({"success": True})
             response.status_code = 200
             return response
 
-    # Register blueprints
     from app.routes.auth import auth_bp
     from app.routes.vip import vip_bp
     from app.routes.guardian import guardian_bp
@@ -97,7 +95,59 @@ def create_app():
     app.register_blueprint(device_guardian_bp, url_prefix="/api/device-guardian")
     app.register_blueprint(device_pairing_bp, url_prefix="/api/device")
 
-    # Error handlers
+    @app.route('/uploads/<path:filename>')
+    def serve_uploaded_file(filename):
+        try:
+            
+            full_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            
+            return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+        except FileNotFoundError:
+
+            return jsonify({"success": False, "error": "File not found"}), 404
+        except Exception as e:
+            print(f"Error serving file: {str(e)}")
+            return jsonify({"success": False, "error": str(e)}), 500
+
+    @app.route('/api/debug-uploads')
+    def debug_uploads():
+        """Debug endpoint to check upload folder"""
+        try:
+            uploads_path = app.config['UPLOAD_FOLDER']
+            exists = os.path.exists(uploads_path)
+            
+            if exists:
+                files = []
+                for root, dirs, filenames in os.walk(uploads_path):
+                    for filename in filenames:
+                        filepath = os.path.join(root, filename)
+                        rel_path = os.path.relpath(filepath, uploads_path)
+                        files.append({
+                            "name": filename,
+                            "path": rel_path,
+                            "size": os.path.getsize(filepath),
+                            "exists": os.path.exists(filepath)
+                        })
+                
+                return jsonify({
+                    "success": True,
+                    "upload_folder": uploads_path,
+                    "folder_exists": exists,
+                    "files": files,
+                    "total_files": len(files)
+                })
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": f"Upload folder not found: {uploads_path}"
+                }), 404
+                
+        except Exception as e:
+            return jsonify({
+                "success": False,
+                "error": str(e)
+            }), 500
+
     @app.errorhandler(400)
     def bad_request(error):
         return (
@@ -128,10 +178,20 @@ def create_app():
             500,
         )
 
+    @app.errorhandler(413)
+    def request_entity_too_large(error):
+        return (
+            jsonify({
+                "success": False, 
+                "error": 413, 
+                "message": "File too large. Maximum size is 2MB"
+            }),
+            413,
+        )
+
     @app.route("/api/test-db")
     def test_db():
         try:
-            # Wrap SQL query in text() for SQLAlchemy 2.x
             result = db.session.execute(text("SELECT 1")).fetchone()
             return {
                 "success": True,
