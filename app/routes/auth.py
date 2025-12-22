@@ -3,10 +3,7 @@ import random
 import string
 from datetime import datetime, timedelta, timezone
 from flask import Blueprint, jsonify, make_response, request
-from flask_jwt_extended import (
-    create_access_token,
-    create_refresh_token
-)
+from flask_jwt_extended import create_access_token, create_refresh_token
 from sqlalchemy import or_
 from werkzeug.security import generate_password_hash, check_password_hash
 from app import db
@@ -339,7 +336,6 @@ def login():
         ).delete()
         db.session.commit()
 
-        # Successful login → proceed
         guardian_device = DeviceGuardian.query.filter_by(
             guardian_id=guardian.guardian_id
         ).first()
