@@ -305,34 +305,51 @@ def get_login_block_info(username, ip_address, window_minutes=30, free_attempts=
 def login():
     try:
         data = request.get_json()
-        username = data.get("username")
+        identifier = data.get("identifier")
         password = data.get("password")
         ip_addr = request.remote_addr
 
-        if not username or not password:
-            return error_response("Username and password required", 400)
+        if not identifier or not password:
+            return error_response("Email/Username and password required", 400)
 
-        # Check progressive lockout
-        block_info = get_login_block_info(username=username, ip_address=ip_addr)
+        identifier = identifier.strip().lower()
+
+        # Determine identifier type
+        is_email = "@" in identifier
+
+        # Resolve guardian FIRST
+        guardian = (
+            Guardian.query.filter_by(email=identifier).first()
+            if is_email
+            else Guardian.query.filter_by(username=identifier).first()
+        )
+
+        # Use username for lockout tracking (consistent)
+        lockout_username = guardian.username if guardian else identifier
+
+        # Progressive lockout
+        block_info = get_login_block_info(username=lockout_username, ip_address=ip_addr)
         if not block_info["allowed"]:
             return error_response(
                 f"Too many failed login attempts. Try again in {block_info['retry_after']} seconds.",
                 429,
             )
 
-        guardian = Guardian.query.filter_by(username=username).first()
-
-        # Failed login
+        # Invalid credentials
         if not guardian or not guardian.check_password(password):
-            attempt = LoginAttempt(username=username, ip_address=ip_addr)
+            attempt = LoginAttempt(username=lockout_username, ip_address=ip_addr)
             db.session.add(attempt)
             db.session.commit()
             return error_response(
-                "Login failed. Please check your username or password.", 401
+                "Login failed. Please check your email/username or password.", 401
             )
 
+        # Clear failed attempts on success
         LoginAttempt.query.filter(
-            or_(LoginAttempt.username == username, LoginAttempt.ip_address == ip_addr)
+            or_(
+                LoginAttempt.username == guardian.username,
+                LoginAttempt.ip_address == ip_addr,
+            )
         ).delete()
         db.session.commit()
 
@@ -386,7 +403,7 @@ def login():
 
     except Exception as e:
         print(f"Login error: {e}")
-        return error_response("Login failed", 500, str(e))
+        return error_response("Login failed", 500)
 
 
 @auth_bp.route("/logout", methods=["POST"])
