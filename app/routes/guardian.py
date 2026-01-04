@@ -212,8 +212,8 @@ def update_my_profile(guardian):
             "email": guardian.email,
             "contact_number": guardian.contact_number,
             "cellphone": guardian.contact_number,
-            "guardian_image_url": guardian_image_url,  # Full URL
-            "avatar": guardian_image_url,  # Full URL
+            "guardian_image_url": guardian_image_url, 
+            "avatar": guardian_image_url,  
             "province": guardian.province,
             "city": guardian.city,
             "barangay": guardian.barangay,
