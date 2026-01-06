@@ -24,45 +24,45 @@ def upload_profile_image(guardian):
     """Upload profile image for current logged-in guardian"""
     try:
         print(f"Starting image upload for guardian: {guardian.guardian_id}")
-        
+
         if 'image' not in request.files:
             return error_response("No image file provided", 400)
-        
+
         file = request.files['image']
-        
+
         if file.filename == '':
             return error_response("No selected file", 400)
-        
+
         if not allowed_file(file.filename):
             return error_response("File type not allowed. Only PNG, JPG, JPEG, GIF, WEBP are allowed", 400)
-        
+
         print(f"File received: {file.filename}, Size: {file.content_length} bytes")
-        
+
         # Create unique filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         unique_id = str(uuid.uuid4())[:8]
         original_filename = secure_filename(file.filename)
         file_extension = original_filename.rsplit('.', 1)[1].lower()
         new_filename = f"guardian_{guardian.guardian_id}_{timestamp}_{unique_id}.{file_extension}"
-        
+
         print(f"Generated filename: {new_filename}")
-        
+
         # Save file with debugging
         upload_folder = current_app.config['UPLOAD_FOLDER']
-        
+
         upload_path = os.path.join(upload_folder, 'profile_pics')
-        
+
         os.makedirs(upload_path, exist_ok=True)
-        
+
         file_path = os.path.join(upload_path, new_filename)
-        
+
         file.save(file_path)
-        
+
         if os.path.exists(file_path):
             file_size = os.path.getsize(file_path)
         else:
             return error_response("Failed to save image file", 500)
-        
+
         if guardian.guardian_image_url:
             old_image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], guardian.guardian_image_url)
             print(f"🗑️ Old image path to delete: {old_image_path}")
@@ -72,16 +72,16 @@ def upload_profile_image(guardian):
                 except Exception as delete_error:
                     print(f"⚠️ Could not delete old image: {delete_error}")
                     pass 
-        
+
         relative_path = f"profile_pics/{new_filename}"
         guardian.guardian_image_url = relative_path
         guardian.updated_at = datetime.now(timezone.utc)
-        
+
         db.session.commit()
-        
+
         base_url = request.host_url.rstrip('/')
         image_url = f"{base_url}/uploads/{relative_path}"
-        
+
         return success_response(
             data={
                 "image_url": image_url,
@@ -91,7 +91,7 @@ def upload_profile_image(guardian):
             },
             message="Profile image uploaded successfully"
         )
-        
+
     except Exception as e:
         db.session.rollback()
         print(f"IMAGE UPLOAD ERROR: {str(e)}")
@@ -102,36 +102,19 @@ def upload_profile_image(guardian):
 
 @guardian_bp.route("/profile", methods=["GET"])
 @guardian_required
-def get_my_profile(guardian):
-    """Get current logged-in guardian's profile"""
+def get_profile(guardian):
     try:
-        guardian_image_url = None
-        avatar_url = None
-        
-        if guardian.guardian_image_url:
-            base_url = request.host_url.rstrip('/')
-            full_url = f"{base_url}/uploads/{guardian.guardian_image_url}"
-            guardian_image_url = full_url
-            avatar_url = full_url
-        
-        guardian_info = {
-            "id": guardian.guardian_id,
+        profile_data = {
             "guardian_id": guardian.guardian_id,
             "username": guardian.username,
-            "name": guardian.guardian_name or guardian.username,
             "guardian_name": guardian.guardian_name,
             "email": guardian.email,
             "contact_number": guardian.contact_number,
-            "cellphone": guardian.contact_number,
-            "guardian_image_url": guardian_image_url,  
-            "avatar": avatar_url,  
             "province": guardian.province,
             "city": guardian.city,
             "barangay": guardian.barangay,
-            "village": guardian.village,
             "street_address": guardian.street_address,
-            "address": f"{guardian.street_address or ''}, {guardian.barangay or ''}, {guardian.city or ''}, {guardian.province or ''}",
-            "role": guardian.role,
+            "guardian_image_url": guardian.guardian_image_url,
             "created_at": (
                 guardian.created_at.isoformat() if guardian.created_at else None
             ),
@@ -140,11 +123,10 @@ def get_my_profile(guardian):
             ),
         }
 
-        return success_response(data=guardian_info)
+        return success_response(data=profile_data)
 
     except Exception as e:
-        print(f"GET PROFILE ERROR: {e}")
-        return error_response("Failed to fetch guardian profile", 500, str(e))
+        return error_response("Failed to fetch profile", 500, str(e))
 
 
 @guardian_bp.route("/profile", methods=["PUT"])
@@ -187,7 +169,15 @@ def update_my_profile(guardian):
             if "password" in data and data["password"]:
                 guardian.set_password(data["password"])
 
-            if "guardian_image_url" in data and data["guardian_image_url"]:
+            if "guardian_image_url" in data:
+                if guardian.guardian_image_url and not data["guardian_image_url"]:
+                    old_path = os.path.join(
+                        current_app.config["UPLOAD_FOLDER"],
+                        guardian.guardian_image_url.lstrip("/")
+                    )
+                    if os.path.exists(old_path):
+                        os.remove(old_path)
+
                 guardian.guardian_image_url = data["guardian_image_url"]
 
         base_url = request.host_url.rstrip('/')

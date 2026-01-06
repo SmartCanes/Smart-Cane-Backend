@@ -506,38 +506,6 @@ def verify_token(guardian):
         print(f"Verify token error: {e}")
         return error_response("Token verification failed", 500, str(e))
 
-
-# Get guardian profile
-@auth_bp.route("/profile", methods=["GET"])
-@guardian_required
-def get_profile(guardian):
-    try:
-        profile_data = {
-            "guardian_id": guardian.guardian_id,
-            "username": guardian.username,
-            "guardian_name": guardian.guardian_name,
-            "email": guardian.email,
-            "contact_number": guardian.contact_number,
-            "relationship_to_vip": guardian.relationship_to_vip,
-            "province": guardian.province,
-            "city": guardian.city,
-            "barangay": guardian.barangay,
-            "street_address": guardian.street_address,
-            "guardian_image_url": guardian.guardian_image_url,
-            "created_at": (
-                guardian.created_at.isoformat() if guardian.created_at else None
-            ),
-            "updated_at": (
-                guardian.updated_at.isoformat() if guardian.updated_at else None
-            ),
-        }
-
-        return success_response(data=profile_data)
-
-    except Exception as e:
-        return error_response("Failed to fetch profile", 500, str(e))
-
-
 # forgot pass logics
 # --------------------------------------------------
 # 1. REQUEST OTP
