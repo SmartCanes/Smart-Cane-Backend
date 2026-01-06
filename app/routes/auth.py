@@ -37,14 +37,14 @@ def generate_otp(length=6):
     return "".join(random.choices(string.digits, k=length))
 
 
-def check_otp_rate_limit(email):
+def check_otp_rate_limit(email, purpose='general'):
     """
     Check if user has exceeded OTP request limits
     """
     # Count OTP requests in the last hour
     one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
     recent_otps = OTP.query.filter(
-        OTP.email == email, OTP.created_at >= one_hour_ago
+        OTP.email == email, OTP.purpose == purpose, OTP.created_at >= one_hour_ago
     ).count()
 
     # Limit to 3 OTP requests per hour
@@ -56,12 +56,13 @@ def send_otp():
     try:
         data = request.get_json()
         email = data.get("email")
+        purpose = data.get('purpose', 'general') 
 
         if not email:
             return error_response("Email is required", 400)
 
         # Check rate limit
-        if not check_otp_rate_limit(email):
+        if not check_otp_rate_limit(email, purpose):
             return error_response("Too many OTP requests. Please try again later.", 429)
 
         # Generate OTP
@@ -70,7 +71,11 @@ def send_otp():
 
         # Store OTP in database
         otp_record = OTP(
-            email=email, otp_code=otp_code, expires_at=expiration_time, is_used=False
+            email=email,
+            otp_code=otp_code,
+            expires_at=expiration_time,
+            is_used=False,
+            purpose=purpose
         )
 
         db.session.add(otp_record)
@@ -95,13 +100,14 @@ def verify_otp():
         data = request.get_json()
         email = data.get("email")
         otp_code = data.get("otp_code")
+        purpose = data.get('purpose', 'general') 
 
         if not email or not otp_code:
             return error_response("Email and OTP code are required", 400)
 
         # Find the most recent valid OTP for this email
         otp_record = (
-            OTP.query.filter_by(email=email, is_used=False)
+            OTP.query.filter_by(email=email, is_used=False, purpose=purpose)
             .order_by(OTP.created_at.desc())
             .first()
         )
@@ -506,6 +512,85 @@ def verify_token(guardian):
         print(f"Verify token error: {e}")
         return error_response("Token verification failed", 500, str(e))
 
+
+# Request OTP for email change
+@auth_bp.route("/profile/change-email/request", methods=["POST"])
+@guardian_required
+def request_email_change(guardian):
+    data = request.get_json()
+    new_email = data.get("new_email")
+
+    if not new_email:
+        return error_response("New email is required", 400)
+
+    # guardian is already available here
+    existing_email = Guardian.query.filter_by(email=new_email).first()
+    if existing_email and existing_email.guardian_id != guardian.guardian_id:
+        return error_response("Email already exists. Please use another email", 400)
+
+    if not check_otp_rate_limit(new_email, "email_change"):
+        return error_response("Too many OTP requests. Please try again later.", 429)
+
+    otp_code = generate_otp()
+    expiration_time = datetime.now(timezone.utc) + timedelta(minutes=10)
+
+    otp_record = OTP(
+        email=new_email,
+        otp_code=otp_code,
+        expires_at=expiration_time,
+        is_used=False,
+        purpose="email_change",
+    )
+
+    db.session.add(otp_record)
+    db.session.commit()
+
+    email_sent = send_otp_email(recipient_email=new_email, otp_code=otp_code)
+    if not email_sent:
+        return error_response("Failed to send OTP email", 500)
+
+    return success_response(message="OTP sent to new email address", status_code=200)
+
+
+@auth_bp.route("/profile/change-email/verify", methods=["POST"])
+@guardian_required
+def verify_email_change(guardian):
+    data = request.get_json()
+    new_email = data.get("new_email")
+    otp_code = data.get("otp_code")
+
+    if not new_email or not otp_code:
+        return error_response("New email and OTP code are required", 400)
+
+    otp_record = OTP.query.filter_by(
+        email=new_email, otp_code=otp_code, is_used=False, purpose="email_change"
+    ).first()
+
+    if not otp_record:
+        return error_response("Invalid OTP for email change", 400)
+
+    if datetime.now(timezone.utc) > otp_record.expires_at.replace(tzinfo=timezone.utc):
+        return error_response("OTP has expired. Please request a new OTP.", 400)
+
+    existing_email = Guardian.query.filter_by(email=new_email).first()
+    if existing_email and existing_email.guardian_id != guardian.guardian_id:
+        return error_response("Email already exists. Please use another email", 400)
+
+    old_email = guardian.email
+    guardian.email = new_email
+
+    otp_record.is_used = True
+    otp_record.used_at = datetime.now(timezone.utc)
+
+    db.session.commit()
+
+    return success_response(
+        message="Email updated successfully",
+        data={"old_email": old_email, "new_email": new_email},
+        status_code=200,
+    )
+
+
 # forgot pass logics
 # --------------------------------------------------
 # 1. REQUEST OTP
@@ -554,7 +639,9 @@ def verify_forgot_password_otp():
         if not email or not otp_code:
             return error_response("Email and OTP are required", 400)
 
-        otp = OTP.query.filter_by(email=email, otp_code=otp_code, is_used=False).first()
+        otp = OTP.query.filter_by(
+            email=email, otp_code=otp_code, is_used=False, purpose="password_reset"
+        ).first()
 
         if not otp:
             return error_response("Invalid OTP", 400)
