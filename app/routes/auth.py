@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 import random
 import string
 from datetime import datetime, timedelta, timezone
+from app.utils.auth import guardian_required
 from flask import Blueprint, jsonify, make_response, request
 from flask_jwt_extended import create_access_token, create_refresh_token
 from sqlalchemy import or_
@@ -18,6 +19,7 @@ from app.utils.serializer import model_to_dict
 from datetime import datetime, timedelta, timezone
 from app.utils.password_email_service import send_password_reset_email
 from app.utils.serializer import model_to_dict
+
 # Add these imports at the top of auth.py if not already present
 from flask import request, current_app
 from werkzeug.utils import secure_filename
@@ -246,6 +248,7 @@ def register():
     except Exception as e:
         db.session.rollback()
         return error_response("Registration failed", 500, str(e))
+
 
 def get_login_block_info(username, ip_address, window_minutes=30, free_attempts=3):
     LOCKOUTS = [60, 180, 600, 1800]
@@ -563,10 +566,7 @@ def forgot_password_request():
 
         send_password_reset_email(email, otp_code, user.guardian_name)
 
-        return success_response(
-            message="OTP sent to email",
-            status_code=200
-        )
+        return success_response(message="OTP sent to email", status_code=200)
 
     except Exception as e:
         print("Forgot password error:", str(e))
@@ -578,14 +578,15 @@ def forgot_password_request():
 # --------------------------------------------------
 @auth_bp.route("/forgot-password/verify", methods=["POST"])
 def verify_forgot_password_otp():
-    data = request.get_json()
-    email = data.get("email")
-    otp_code = data.get("otp_code")
+    try:
+        data = request.get_json()
+        email = data.get("email")
+        otp_code = data.get("otp_code")
 
         if not email or not otp_code:
             return error_response("Email and OTP are required", 400)
 
-    otp = OTP.query.filter_by(email=email, otp_code=otp_code, is_used=False).first()
+        otp = OTP.query.filter_by(email=email, otp_code=otp_code, is_used=False).first()
 
         if not otp:
             return error_response("Invalid OTP", 400)
@@ -602,10 +603,7 @@ def verify_forgot_password_otp():
         otp.used_at = datetime.now(timezone.utc)
         db.session.commit()
 
-        return success_response(
-            message="OTP verified",
-            status_code=200
-        )
+        return success_response(message="OTP verified", status_code=200)
 
     except Exception as e:
         db.session.rollback()
@@ -615,21 +613,23 @@ def verify_forgot_password_otp():
 # --------------------------------------------------
 # 3. RESET PASSWORD
 # --------------------------------------------------
+
+
 @auth_bp.route("/forgot-password/reset", methods=["POST"])
 def reset_forgot_password():
     data = request.get_json()
     email = data.get("email")
     new_password = data.get("new_password")
 
-        if not email or not new_password:
-            return error_response("Email and new password are required", 400)
+    if not email or not new_password:
+        return error_response("Email and new password are required", 400)
+    user = Guardian.query.filter_by(email=email).first()
 
-        user = Guardian.query.filter_by(email=email).first()
+    if not user:
+        return error_response("User not found", 404)
 
-        if not user:
-            return error_response("User not found", 404)
+    user.set_password(new_password)
 
-        user.set_password(new_password)
-        db.session.commit()
+    db.session.commit()
 
     return jsonify({"message": "Password updated successfully"}), 200
