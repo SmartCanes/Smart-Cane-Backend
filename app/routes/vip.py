@@ -10,10 +10,6 @@ import uuid
 
 vip_bp = Blueprint("vip", __name__)
 
-<<<<<<< HEAD
-
-@vip_bp.route("/my-vip", methods=["GET"])
-=======
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in current_app.config['ALLOWED_EXTENSIONS']
 
@@ -100,20 +96,11 @@ def upload_vip_image(guardian, vip_id):
         return error_response("Failed to upload VIP image", 500, str(e))
 
 @vip_bp.route('/my-vip', methods=['GET'])
->>>>>>> origin/vip-profile-back
 @guardian_required
 def get_my_vip(guardian):
     try:
-<<<<<<< HEAD
-        # Get VIP associated with current guardian
-        vip_guardian = VIPGuardian.query.filter_by(
-            guardian_id=guardian.guardian_id
-        ).first()
-
-=======
         vip_guardian = VIPGuardian.query.filter_by(guardian_id=guardian.guardian_id).first()
         
->>>>>>> origin/vip-profile-back
         if not vip_guardian:
             return error_response("No VIP associated with your account", 404)
 
@@ -121,28 +108,11 @@ def get_my_vip(guardian):
 
         if not vip:
             return error_response("VIP not found", 404)
-<<<<<<< HEAD
-
-        # Get condition/medical info (you might need to add a medical_info table)
-        # For now, we'll return a placeholder
-=======
         
->>>>>>> origin/vip-profile-back
         vip_data = {
             "id": vip.vip_id,
             "name": vip.vip_name,
             "fullName": vip.vip_name,
-<<<<<<< HEAD
-            "cellphone": "",  # VIP might not have phone in your model
-            "gender": "",  # Add gender field to VIP model if needed
-            "address": f"{vip.street_address or ''}, {vip.barangay or ''}, {vip.city or ''}, {vip.province or ''}",
-            "condition": "Visually Impaired",  # Placeholder - add medical condition field
-            "province": vip.province,
-            "city": vip.city,
-            "barangay": vip.barangay,
-            "street_address": vip.street_address,
-            "relationship": vip_guardian.relationship_to_vip,
-=======
             "avatar": vip.vip_image_url or "",
             "province": vip.province or "",
             "city": vip.city or "",
@@ -152,7 +122,6 @@ def get_my_vip(guardian):
             "relationship": vip_guardian.relationship_to_vip or "",
             "created_at": vip.created_at.isoformat() if vip.created_at else None,
             "updated_at": vip.updated_at.isoformat() if vip.updated_at else None
->>>>>>> origin/vip-profile-back
         }
 
         return success_response(data=vip_data)
@@ -165,16 +134,8 @@ def get_my_vip(guardian):
 @guardian_required
 def update_my_vip(guardian):
     try:
-<<<<<<< HEAD
-        # Check if guardian has VIP access
-        vip_guardian = VIPGuardian.query.filter_by(
-            guardian_id=guardian.guardian_id
-        ).first()
-
-=======
         vip_guardian = VIPGuardian.query.filter_by(guardian_id=guardian.guardian_id).first()
         
->>>>>>> origin/vip-profile-back
         if not vip_guardian:
             return error_response("No VIP associated with your account", 403)
 
@@ -184,39 +145,6 @@ def update_my_vip(guardian):
             return error_response("VIP not found", 404)
 
         data = request.get_json()
-<<<<<<< HEAD
-
-        # Update VIP fields
-        if "fullName" in data or "name" in data:
-            vip.vip_name = data.get("fullName") or data.get("name") or vip.vip_name
-
-        if "avatar" in data:
-            vip.vip_image_url = data["avatar"]
-
-        # Update address fields
-        if "province" in data:
-            vip.province = data["province"]
-        if "city" in data:
-            vip.city = data["city"]
-        if "barangay" in data:
-            vip.barangay = data["barangay"]
-        if "street_address" in data:
-            vip.street_address = data["street_address"]
-        elif "address" in data:
-            # If address is a single string, parse it or store as is
-            vip.street_address = data["address"]
-
-        # Update relationship if provided
-        if "relationship" in data:
-            vip_guardian.relationship_to_vip = data["relationship"]
-
-        # Update condition/medical info (you might need separate medical_info table)
-        # For now, this is a placeholder
-
-        db.session.commit()
-
-        # Return updated VIP data
-=======
         
         if 'fullName' in data or 'name' in data:
             vip.vip_name = data.get('fullName') or data.get('name') or vip.vip_name
@@ -240,16 +168,10 @@ def update_my_vip(guardian):
         
         db.session.commit()
         
->>>>>>> origin/vip-profile-back
         updated_vip = {
             "id": vip.vip_id,
             "name": vip.vip_name,
             "fullName": vip.vip_name,
-<<<<<<< HEAD
-            "address": f"{vip.street_address or ''}, {vip.barangay or ''}, {vip.city or ''}, {vip.province or ''}",
-            "condition": "Visually Impaired",  # Placeholder
-            "relationship": vip_guardian.relationship_to_vip,
-=======
             "avatar": vip.vip_image_url or "",
             "province": vip.province or "",
             "city": vip.city or "",
@@ -258,7 +180,6 @@ def update_my_vip(guardian):
             "address": f"{vip.street_address or ''}, {vip.barangay or ''}, {vip.city or ''}, {vip.province or ''}".strip(", "),
             "relationship": vip_guardian.relationship_to_vip or "",
             "updated_at": vip.updated_at.isoformat() if vip.updated_at else None
->>>>>>> origin/vip-profile-back
         }
 
         return success_response(
@@ -269,11 +190,6 @@ def update_my_vip(guardian):
         db.session.rollback()
         return error_response("Failed to update VIP profile", 500, str(e))
 
-<<<<<<< HEAD
-
-# Keep your existing routes for backward compatibility
-@vip_bp.route("", methods=["GET"])
-=======
 @vip_bp.route('', methods=['POST'])
 @guardian_required
 def create_vip(guardian):
@@ -478,42 +394,15 @@ def delete_vip(guardian, vip_id):
         return error_response("Failed to delete VIP", 500, str(e))
 
 @vip_bp.route('', methods=['GET'])
->>>>>>> origin/vip-profile-back
 @guardian_required
 def get_all_vips(guardian):
     try:
-<<<<<<< HEAD
-        # Get VIPs associated with current guardian
-        vip_guardians = VIPGuardian.query.filter_by(
-            guardian_id=guardian.guardian_id
-        ).all()
-
-=======
         vip_guardians = VIPGuardian.query.filter_by(guardian_id=guardian.guardian_id).all()
         
->>>>>>> origin/vip-profile-back
         vip_list = []
         for vg in vip_guardians:
             vip = VIP.query.get(vg.vip_id)
             if vip:
-<<<<<<< HEAD
-                vip_list.append(
-                    {
-                        "vip_id": vip.vip_id,
-                        "vip_name": vip.vip_name,
-                        "vip_image_url": vip.vip_image_url,
-                        "province": vip.province,
-                        "city": vip.city,
-                        "barangay": vip.barangay,
-                        "street_address": vip.street_address,
-                        "relationship": vg.relationship_to_vip,
-                        "created_at": (
-                            vip.created_at.isoformat() if vip.created_at else None
-                        ),
-                    }
-                )
-
-=======
                 vip_list.append({
                     "id": vip.vip_id,
                     "name": vip.vip_name,
@@ -530,7 +419,6 @@ def get_all_vips(guardian):
                     "assigned_at": vg.assigned_at.isoformat() if vg.assigned_at else None
                 })
         
->>>>>>> origin/vip-profile-back
         return success_response(data=vip_list)
 
     except Exception as e:
