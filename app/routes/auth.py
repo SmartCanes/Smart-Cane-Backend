@@ -203,10 +203,10 @@ def register():
         required_fields = [
             "username",
             "password",
-            "guardian_name",
+            "first_name",
+            "last_name",
             "email",
             "contact_number",
-            # 'relationship_to_vip',
             "village",
             "province",
             "city",
@@ -228,7 +228,9 @@ def register():
 
         guardian = Guardian(
             username=data["username"],
-            guardian_name=data["guardian_name"],
+            first_name=data["first_name"],
+            middle_name=data.get("middle_name"),
+            last_name=data["last_name"],
             email=data["email"],
             contact_number=data.get("contact_number"),
             province=data.get("province"),
@@ -377,7 +379,9 @@ def login():
             include_fields=[
                 "guardian_id",
                 "username",
-                "guardian_name",
+                "first_name",
+                "middle_name",
+                "last_name",
                 "email",
                 "contact_number",
                 "role",
@@ -391,7 +395,7 @@ def login():
         )
 
         response_body, status_code = success_response(
-            data={**user_data, "device_registered": device_registered},
+            data={**user_data, "device_registered": device_registered}, # type: ignore
             message="Login successful",
         )
 

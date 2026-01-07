@@ -15,7 +15,11 @@ guardian_bp = Blueprint("guardian", __name__)
 
 
 def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in current_app.config['ALLOWED_EXTENSIONS']
+    return (
+        "." in filename
+        and filename.rsplit(".", 1)[1].lower()
+        in current_app.config["ALLOWED_EXTENSIONS"]
+    )
 
 
 @guardian_bp.route("/profile/image", methods=["POST"])
@@ -25,16 +29,18 @@ def upload_profile_image(guardian):
     try:
         print(f"Starting image upload for guardian: {guardian.guardian_id}")
 
-        if 'image' not in request.files:
+        if "image" not in request.files:
             return error_response("No image file provided", 400)
 
-        file = request.files['image']
+        file = request.files["image"]
 
-        if file.filename == '':
+        if file.filename == "":
             return error_response("No selected file", 400)
 
         if not allowed_file(file.filename):
-            return error_response("File type not allowed. Only PNG, JPG, JPEG, GIF, WEBP are allowed", 400)
+            return error_response(
+                "File type not allowed. Only PNG, JPG, JPEG, GIF, WEBP are allowed", 400
+            )
 
         print(f"File received: {file.filename}, Size: {file.content_length} bytes")
 
@@ -42,15 +48,17 @@ def upload_profile_image(guardian):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         unique_id = str(uuid.uuid4())[:8]
         original_filename = secure_filename(file.filename)
-        file_extension = original_filename.rsplit('.', 1)[1].lower()
-        new_filename = f"guardian_{guardian.guardian_id}_{timestamp}_{unique_id}.{file_extension}"
+        file_extension = original_filename.rsplit(".", 1)[1].lower()
+        new_filename = (
+            f"guardian_{guardian.guardian_id}_{timestamp}_{unique_id}.{file_extension}"
+        )
 
         print(f"Generated filename: {new_filename}")
 
         # Save file with debugging
-        upload_folder = current_app.config['UPLOAD_FOLDER']
+        upload_folder = current_app.config["UPLOAD_FOLDER"]
 
-        upload_path = os.path.join(upload_folder, 'profile_pics')
+        upload_path = os.path.join(upload_folder, "profile_pics")
 
         os.makedirs(upload_path, exist_ok=True)
 
@@ -64,14 +72,16 @@ def upload_profile_image(guardian):
             return error_response("Failed to save image file", 500)
 
         if guardian.guardian_image_url:
-            old_image_path = os.path.join(current_app.config['UPLOAD_FOLDER'], guardian.guardian_image_url)
+            old_image_path = os.path.join(
+                current_app.config["UPLOAD_FOLDER"], guardian.guardian_image_url
+            )
             print(f"🗑️ Old image path to delete: {old_image_path}")
             if os.path.exists(old_image_path):
                 try:
                     os.remove(old_image_path)
                 except Exception as delete_error:
                     print(f"⚠️ Could not delete old image: {delete_error}")
-                    pass 
+                    pass
 
         relative_path = f"profile_pics/{new_filename}"
         guardian.guardian_image_url = relative_path
@@ -79,7 +89,7 @@ def upload_profile_image(guardian):
 
         db.session.commit()
 
-        base_url = request.host_url.rstrip('/')
+        base_url = request.host_url.rstrip("/")
         image_url = f"{base_url}/uploads/{relative_path}"
 
         return success_response(
@@ -87,15 +97,16 @@ def upload_profile_image(guardian):
                 "image_url": image_url,
                 "relative_path": relative_path,
                 "avatar": image_url,
-                "guardian_image_url": image_url
+                "guardian_image_url": image_url,
             },
-            message="Profile image uploaded successfully"
+            message="Profile image uploaded successfully",
         )
 
     except Exception as e:
         db.session.rollback()
         print(f"IMAGE UPLOAD ERROR: {str(e)}")
         import traceback
+
         traceback.print_exc()
         return error_response("Failed to upload image", 500, str(e))
 
@@ -107,7 +118,9 @@ def get_profile(guardian):
         profile_data = {
             "guardian_id": guardian.guardian_id,
             "username": guardian.username,
-            "guardian_name": guardian.guardian_name,
+            "first_name": guardian.first_name,
+            "middle_name": guardian.middle_name,
+            "last_name": guardian.last_name,
             "email": guardian.email,
             "contact_number": guardian.contact_number,
             "province": guardian.province,
@@ -151,7 +164,9 @@ def update_my_profile(guardian):
                 return error_response("Username already exists", 400)
 
         allowed_fields = [
-            "guardian_name",
+            "first_name",
+            "middle_name",
+            "last_name",
             "email",
             "contact_number",
             "province",
@@ -173,17 +188,18 @@ def update_my_profile(guardian):
                 if guardian.guardian_image_url and not data["guardian_image_url"]:
                     old_path = os.path.join(
                         current_app.config["UPLOAD_FOLDER"],
-                        guardian.guardian_image_url.lstrip("/")
+                        guardian.guardian_image_url.lstrip("/"),
                     )
                     if os.path.exists(old_path):
                         os.remove(old_path)
 
                 guardian.guardian_image_url = data["guardian_image_url"]
 
-        base_url = request.host_url.rstrip('/')
+        base_url = request.host_url.rstrip("/")
         guardian_image_url = (
             f"{base_url}/uploads/{guardian.guardian_image_url}"
-            if guardian.guardian_image_url else None
+            if guardian.guardian_image_url
+            else None
         )
 
         db.session.commit()
@@ -195,75 +211,6 @@ def update_my_profile(guardian):
     except Exception as e:
         db.session.rollback()
         return error_response("Failed to update profile", 500, str(e))
-
-
-@guardian_bp.route("/vip-guardians", methods=["GET"])
-@guardian_required
-def get_vip_guardians(guardian):
-    """Get all guardians associated with the same VIPs as current guardian"""
-    try:
-        vip_guardians = VIPGuardian.query.filter_by(
-            guardian_id=guardian.guardian_id
-        ).all()
-        vip_ids = [vg.vip_id for vg in vip_guardians]
-
-        if not vip_ids:
-            return success_response(data=[])
-
-        all_vip_guardians = VIPGuardian.query.filter(
-            VIPGuardian.vip_id.in_(vip_ids)
-        ).all()
-        guardian_ids = [vg.guardian_id for vg in all_vip_guardians]
-
-        guardian_ids = [gid for gid in guardian_ids if gid != guardian.guardian_id]
-
-        if not guardian_ids:
-            return success_response(data=[])
-
-        guardians = Guardian.query.filter(Guardian.guardian_id.in_(guardian_ids)).all()
-
-        guardian_list = []
-        for g in guardians:
-            vip_guardian = VIPGuardian.query.filter_by(
-                guardian_id=g.guardian_id,
-                vip_id=vip_ids[0],  
-            ).first()
-
-            guardian_image_url = None
-            if g.guardian_image_url:
-                base_url = request.host_url.rstrip('/')
-                guardian_image_url = f"{base_url}/uploads/{g.guardian_image_url}"
-
-            guardian_info = {
-                "id": g.guardian_id,
-                "guardian_id": g.guardian_id,
-                "username": g.username,
-                "name": g.guardian_name or g.username,
-                "guardian_name": g.guardian_name,
-                "fullName": g.guardian_name,
-                "email": g.email,
-                "contact_number": g.contact_number,
-                "cellphone": g.contact_number,
-                "guardian_image_url": guardian_image_url,  # Full URL
-                "avatar": guardian_image_url,  # Full URL
-                "province": g.province,
-                "city": g.city,
-                "barangay": g.barangay,
-                "village": g.village,
-                "street_address": g.street_address,
-                "address": f"{g.street_address or ''}, {g.barangay or ''}, {g.city or ''}, {g.province or ''}",
-                "relationship": (
-                    vip_guardian.relationship_to_vip if vip_guardian else None
-                ),
-                "created_at": g.created_at.isoformat() if g.created_at else None,
-                "updated_at": g.updated_at.isoformat() if g.updated_at else None,
-            }
-            guardian_list.append(guardian_info)
-
-        return success_response(data=guardian_list)
-
-    except Exception as e:
-        return error_response("Failed to fetch VIP guardians", 500, str(e))
 
 
 @guardian_bp.route("", methods=["GET"])
@@ -281,15 +228,17 @@ def get_guardians_by_vip(guardian):
         for g in guardians:
             guardian_image_url = None
             if g.guardian_image_url:
-                base_url = request.host_url.rstrip('/')
+                base_url = request.host_url.rstrip("/")
                 guardian_image_url = f"{base_url}/uploads/{g.guardian_image_url}"
 
             guardian_list.append(
                 {
                     "guardian_id": g.guardian_id,
                     "username": g.username,
-                    "guardian_name": g.guardian_name,
                     "email": g.email,
+                    "first_name": g.first_name,
+                    "middle_name": g.middle_name,
+                    "last_name": g.last_name,
                     "contact_number": g.contact_number,
                     "relationship_to_vip": g.relationship_to_vip,
                     "guardian_image_url": guardian_image_url,  # Full URL
@@ -314,13 +263,17 @@ def get_guardian(guardian, guardian_id):
 
         guardian_image_url = None
         if guardian_data.guardian_image_url:
-            base_url = request.host_url.rstrip('/')
-            guardian_image_url = f"{base_url}/uploads/{guardian_data.guardian_image_url}"
+            base_url = request.host_url.rstrip("/")
+            guardian_image_url = (
+                f"{base_url}/uploads/{guardian_data.guardian_image_url}"
+            )
 
         guardian_info = {
             "guardian_id": guardian_data.guardian_id,
             "username": guardian_data.username,
-            "guardian_name": guardian_data.guardian_name,
+            "first_name": guardian_data.first_name,
+            "middle_name": guardian_data.middle_name,
+            "last_name": guardian_data.last_name,
             "email": guardian_data.email,
             "contact_number": guardian_data.contact_number,
             "relationship_to_vip": guardian_data.relationship_to_vip,
@@ -366,17 +319,7 @@ def update_guardian(guardian, guardian_id):
             if existing_guardian:
                 return error_response("Username already exists", 400)
 
-        updatable_fields = [
-            "guardian_name",
-            "email",
-            "contact_number",
-            "province",
-            "city",
-            "barangay",
-            "village",
-            "street_address",
-            "guardian_image_url",
-        ]
+        updatable_fields = ["role", "nickname"]
 
         for field in updatable_fields:
             if field in data:
@@ -392,17 +335,3 @@ def update_guardian(guardian, guardian_id):
     except Exception as e:
         db.session.rollback()
         return error_response("Failed to update guardian", 500, str(e))
-
-
-@guardian_bp.route("/test", methods=["GET"])
-@guardian_required
-def test_endpoint(guardian):
-    """Test endpoint to verify guardian authentication is working"""
-    return success_response(
-        message="Guardian endpoint is working",
-        data={
-            "guardian_id": guardian.guardian_id,
-            "username": guardian.username,
-            "name": guardian.guardian_name,
-        },
-    )

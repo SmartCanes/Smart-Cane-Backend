@@ -14,7 +14,7 @@ class OTP(db.Model):
     created_at = db.Column(db.TIMESTAMP, default=lambda: datetime.now(timezone.utc))
     expires_at = db.Column(db.DateTime, nullable=False)
     used_at = db.Column(db.TIMESTAMP, nullable=True, default=None)
-    purpose = db.Column(db.String(50), default='general')
+    purpose = db.Column(db.String(50), default="general")
 
     def __repr__(self):
         return f"<OTP {self.email}>"
@@ -35,7 +35,9 @@ class VIP(db.Model):
     __table_args__ = {"schema": "smart_cane_db"}
 
     vip_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    vip_name = db.Column(db.String(255), nullable=False)
+    first_name = db.Column(db.String(255))
+    middle_name = db.Column(db.String(255), nullable=True)
+    last_name = db.Column(db.String(255))
     vip_image_url = db.Column(db.String(500))
     province = db.Column(db.String(100))
     city = db.Column(db.String(100))
@@ -62,7 +64,9 @@ class Guardian(db.Model):
     guardian_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     username = db.Column(db.String(100), nullable=False, unique=True)
     password = db.Column(db.String(255), nullable=False)
-    guardian_name = db.Column(db.String(255))
+    first_name = db.Column(db.String(255))
+    middle_name = db.Column(db.String(255), nullable=True)
+    last_name = db.Column(db.String(255))
     guardian_image_url = db.Column(db.String(500))
     email = db.Column(db.String(255), nullable=False, unique=True)
     contact_number = db.Column(db.String(20))
