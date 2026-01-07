@@ -167,6 +167,7 @@ def update_my_profile(guardian):
             "first_name",
             "middle_name",
             "last_name",
+            "username",
             "email",
             "contact_number",
             "province",
@@ -176,9 +177,14 @@ def update_my_profile(guardian):
             "street_address",
         ]
 
+        nullable_fields = ["middle_name", "guardian_image_url"]
+
         for field in allowed_fields:
-            if field in data and data[field] is not None:
-                setattr(guardian, field, data[field])
+            if field in data:
+                value = data[field]
+                if field in nullable_fields and value == "":
+                    value = None
+                setattr(guardian, field, value)
 
             # Update password if provided
             if "password" in data and data["password"]:
@@ -194,13 +200,6 @@ def update_my_profile(guardian):
                         os.remove(old_path)
 
                 guardian.guardian_image_url = data["guardian_image_url"]
-
-        base_url = request.host_url.rstrip("/")
-        guardian_image_url = (
-            f"{base_url}/uploads/{guardian.guardian_image_url}"
-            if guardian.guardian_image_url
-            else None
-        )
 
         db.session.commit()
 
