@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 import random
 import string
 from datetime import datetime, timedelta, timezone
-from app.utils.auth import guardian_required
+from app.utils.auth import guardian_required, guardian_with_device_required
 from flask import Blueprint, jsonify, make_response, request
 from flask_jwt_extended import create_access_token, create_refresh_token
 from sqlalchemy import or_
@@ -37,7 +37,7 @@ def generate_otp(length=6):
     return "".join(random.choices(string.digits, k=length))
 
 
-def check_otp_rate_limit(email, purpose='general'):
+def check_otp_rate_limit(email, purpose="general"):
     """
     Check if user has exceeded OTP request limits
     """
@@ -56,7 +56,7 @@ def send_otp():
     try:
         data = request.get_json()
         email = data.get("email")
-        purpose = data.get('purpose', 'general') 
+        purpose = data.get("purpose", "general")
 
         if not email:
             return error_response("Email is required", 400)
@@ -75,7 +75,7 @@ def send_otp():
             otp_code=otp_code,
             expires_at=expiration_time,
             is_used=False,
-            purpose=purpose
+            purpose=purpose,
         )
 
         db.session.add(otp_record)
@@ -100,7 +100,7 @@ def verify_otp():
         data = request.get_json()
         email = data.get("email")
         otp_code = data.get("otp_code")
-        purpose = data.get('purpose', 'general') 
+        purpose = data.get("purpose", "general")
 
         if not email or not otp_code:
             return error_response("Email and OTP code are required", 400)
@@ -395,7 +395,7 @@ def login():
         )
 
         response_body, status_code = success_response(
-            data={**user_data, "device_registered": device_registered}, # type: ignore
+            data={**user_data, "device_registered": device_registered},  # type: ignore
             message="Login successful",
         )
 
@@ -486,6 +486,7 @@ def refresh(guardian):
 
 @auth_bp.route("/verify-token", methods=["GET"])
 @guardian_required
+@guardian_with_device_required
 def verify_token(guardian):
     try:
         try:

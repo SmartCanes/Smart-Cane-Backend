@@ -29,10 +29,13 @@ def guardian_required(f):
 def guardian_with_device_required(f):
     @wraps(f)
     def decorated_function(guardian, *args, **kwargs):
-        devices = DeviceGuardian.query.filter_by(guardian_id=guardian.guardian_id).all()
-        if not devices:
+        exists = DeviceGuardian.query.filter_by(
+            guardian_id=guardian.guardian_id
+        ).first()
+
+        if not exists:
             return jsonify({"success": False, "message": "No devices paired."}), 403
-        kwargs["devices"] = devices
+
         return f(guardian, *args, **kwargs)
 
     return decorated_function
