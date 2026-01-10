@@ -104,6 +104,7 @@ class Device(db.Model):
         db.Integer, db.ForeignKey("smart_cane_db.vip_tbl.vip_id"), nullable=True
     )
     device_serial_number = db.Column(db.String(100), unique=True, nullable=False)
+    device_name = db.Column(db.String(255), nullable=True)
     is_paired = db.Column(db.Boolean, default=False)
     paired_at = db.Column(db.TIMESTAMP, nullable=True)
     created_at = db.Column(db.TIMESTAMP, default=lambda: datetime.now(timezone.utc))
