@@ -8,10 +8,10 @@ from app.utils.auth import guardian_required
 from app.utils.responses import success_response, error_response
 from app.models import VIP
 
-device_pairing_bp = Blueprint("device_pairing", __name__)
+device = Blueprint("device", __name__)
 
 
-@device_pairing_bp.route("/generate", methods=["POST"])
+@device.route("/generate", methods=["POST"])
 @guardian_required
 def generate_pairing_token(guardian):
     try:
@@ -50,7 +50,7 @@ def generate_pairing_token(guardian):
         return error_response("Failed to generate pairing token", 500, str(e))
 
 
-@device_pairing_bp.route("/validate", methods=["GET"])
+@device.route("/validate", methods=["GET"])
 def validate_device_serial():
     serial = request.args.get("device_serial")
 
@@ -76,7 +76,7 @@ def validate_device_serial():
     )
 
 
-@device_pairing_bp.route("/pair", methods=["POST"])
+@device.route("/pair", methods=["POST"])
 @guardian_required
 def pair_device(guardian):
     try:
