@@ -247,11 +247,39 @@ def register():
         db.session.add(guardian)
         db.session.commit()
 
-        return success_response(
+        additional_claims = {
+            "guardian_id": guardian.guardian_id,
+            "username": guardian.username,
+            "role": guardian.role,
+        }
+
+        response_body, status_code = success_response(
             data={"guardian_id": guardian.guardian_id},
             message="Guardian registered successfully",
             status_code=201,
         )
+
+        response = make_response(response_body, status_code)
+
+        set_access_cookies(
+            response,
+            create_access_token(
+                identity=str(guardian.guardian_id),
+                additional_claims=additional_claims,
+            ),
+        )
+        set_refresh_cookies(
+            response,
+            create_refresh_token(identity=str(guardian.guardian_id)),
+        )
+
+        return response
+
+        # return success_response(
+        #     data={"guardian_id": guardian.guardian_id},
+        #     message="Guardian registered successfully",
+        #     status_code=201,
+        # )
 
     except Exception as e:
         db.session.rollback()
