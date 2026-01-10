@@ -280,7 +280,7 @@ def assign_device_to_vip(guardian, device_id):
         return error_response("Failed to assign device to VIP", 500, str(e))
 
 
-@device.route("/<int:device_id>/name", methods=["POST"])
+@device.route("/<int:device_id>/name", methods=["PUT"])
 @guardian_required
 def update_device_name(guardian, device_id):
     try:
