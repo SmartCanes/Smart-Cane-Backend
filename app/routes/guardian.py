@@ -1,6 +1,6 @@
 from flask import Blueprint, request, current_app
 from app import db
-from app.models import Guardian, VIPGuardian, VIP
+from app.models import Guardian, VIP
 from app.utils.auth import guardian_required
 from app.utils.responses import success_response, error_response
 from flask_jwt_extended import jwt_required, get_jwt_identity

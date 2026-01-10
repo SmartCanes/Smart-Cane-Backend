@@ -115,29 +115,6 @@ class Device(db.Model):
 
     guardian_links = db.relationship("DeviceGuardian", backref="device", lazy=True)
 
-
-class VIPGuardian(db.Model):
-    __tablename__ = "vip_guardian_tbl"
-    __table_args__ = {"schema": "smart_cane_db"}
-
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    vip_id = db.Column(
-        db.Integer, db.ForeignKey("smart_cane_db.vip_tbl.vip_id"), nullable=False
-    )
-    guardian_id = db.Column(
-        db.Integer,
-        db.ForeignKey("smart_cane_db.guardian_tbl.guardian_id"),
-        nullable=False,
-    )
-    relationship_to_vip = db.Column(db.String(100), nullable=True)
-    assigned_at = db.Column(db.TIMESTAMP, default=lambda: datetime.now(timezone.utc))
-
-    __table_args__ = (
-        db.UniqueConstraint("vip_id", "guardian_id", name="_vip_guardian_uc"),
-        {"schema": "smart_cane_db"},
-    )
-
-
 class DeviceGuardian(db.Model):
     __tablename__ = "device_guardian_tbl"
     __table_args__ = {"schema": "smart_cane_db"}
@@ -147,6 +124,8 @@ class DeviceGuardian(db.Model):
         db.Integer, db.ForeignKey("smart_cane_db.device_tbl.device_id"), nullable=False
     )
     device_name = db.Column(db.String(255), nullable=True)
+    relationship = db.Column(db.String(100), nullable=True)
+    is_emergency_contact = db.Column(db.Boolean, default=False)
     guardian_id = db.Column(
         db.Integer,
         db.ForeignKey("smart_cane_db.guardian_tbl.guardian_id"),
