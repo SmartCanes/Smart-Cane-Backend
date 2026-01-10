@@ -106,6 +106,7 @@ class Device(db.Model):
     device_serial_number = db.Column(db.String(100), unique=True, nullable=False)
     is_paired = db.Column(db.Boolean, default=False)
     paired_at = db.Column(db.TIMESTAMP, nullable=True)
+    last_active_at = db.Column(db.TIMESTAMP, nullable=True)
     created_at = db.Column(db.TIMESTAMP, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(
         db.TIMESTAMP,
