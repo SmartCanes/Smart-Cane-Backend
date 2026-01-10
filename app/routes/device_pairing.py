@@ -77,11 +77,12 @@ def validate_device_serial():
 
 
 @device_pairing_bp.route("/pair", methods=["POST"])
-def pair_device():
+@guardian_required
+def pair_device(guardian):
     try:
         data = request.get_json() or {}
         device_serial = data.get("device_serial_number")
-        guardian_id = data.get("guardian_id")
+        guardian_id = guardian.guardian_id
 
         if not device_serial:
             return error_response("`device_serial_number` is required", 400)
