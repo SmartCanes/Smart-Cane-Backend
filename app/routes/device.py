@@ -184,6 +184,7 @@ def get_devices(guardian):
                 devices.append(
                     {
                         "device_id": device.device_id,
+                        "device_name": dg.device_name,
                         "device_serial_number": device.device_serial_number,
                         "vip": (model_to_dict(vip) if vip else None),
                         "paired_at": (
@@ -272,3 +273,39 @@ def assign_device_to_vip(guardian, device_id):
     except Exception as e:
         db.session.rollback()
         return error_response("Failed to assign device to VIP", 500, str(e))
+
+
+@device.route("/<int:device_id>", methods=["POST"])
+@guardian_required
+def update_device_name(guardian, device_id):
+    try:
+        data = request.get_json() or {}
+
+        if not device_id:
+            return error_response("device_id is required", 400)
+
+        device_guardian = DeviceGuardian.query.filter_by(
+            device_id=device_id, guardian_id=guardian.guardian_id
+        ).first()
+
+        if not device_guardian:
+            return error_response("Device not paired with this guardian", 404)
+
+        new_name = data.get("device_name")
+        if not new_name:
+            return error_response("device_name is required", 400)
+
+        device_guardian.device_name = new_name
+        db.session.commit()
+
+        return success_response(
+            data={
+                "device_id": device_id,
+                "device_name": new_name,
+            },
+            message="Device name updated successfully",
+        )
+
+    except Exception as e:
+        db.session.rollback()
+        return error_response("Failed to update device name", 500, str(e))
