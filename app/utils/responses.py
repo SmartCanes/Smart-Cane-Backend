@@ -6,7 +6,7 @@ def snake_to_camel_dict(data: dict) -> dict:
         parts = s.split("_")
         return parts[0] + "".join(word.capitalize() for word in parts[1:])
 
-    return {snake_to_camel(k): v for k, v in data.items()}
+    return {snake_to_camel(k): _camelize(v) for k, v in data.items()}
 
 
 def _camelize(data):
