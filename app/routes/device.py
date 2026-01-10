@@ -109,11 +109,9 @@ def pair_device(guardian):
         db.session.commit()
 
         return success_response(
-            data={
-                "device_id": device.device_id,
-                "device_serial_number": device.device_serial_number,
-                "vip_id": device.vip_id,
-            },
+            data=model_to_dict(
+                device, exclude_fields=["is_paired", "created_at", "updated_at"]
+            ),
             message="Device paired successfully!",
             status_code=201,
         )
@@ -191,6 +189,8 @@ def get_devices(guardian):
                             if device.last_active_at
                             else None
                         ),
+                        "relationship": dg.relationship,
+                        "is_emergency_contact": dg.is_emergency_contact,
                         "vip": (model_to_dict(vip) if vip else None),
                         "paired_at": (
                             device.paired_at.isoformat() if device.paired_at else None
