@@ -167,7 +167,7 @@ def unpair_device(guardian, device_id):
         return error_response("Failed to unpair device", 500, str(e))
 
 
-@device.route("/", methods=["GET"])
+@device.route("/list", methods=["GET"])
 @guardian_required
 def get_devices(guardian):
     try:

@@ -58,11 +58,7 @@ def create_app():
         CORS(
             app,
             supports_credentials=True,
-            resources={
-                r"/*": {
-                    "origins": os.environ.get("FRONTEND_URL", "http://localhost:5173")
-                }
-            },
+            resources={r"/*": {"origins": r"http://localhost:\d+"}},
         )
     else:
         app.config["JWT_COOKIE_SECURE"] = True
@@ -70,7 +66,7 @@ def create_app():
         CORS(
             app,
             supports_credentials=True,
-            resources={r"/*": {"origins": "https://yourdomain.com"}},
+            resources={r"/*": {"origins": "https://icane.org"}},
         )
 
     app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
