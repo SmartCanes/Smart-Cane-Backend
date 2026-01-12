@@ -193,6 +193,19 @@ def delete_vip(guardian, device_id):
 
         device.vip_id = None
 
+        upload_folder = current_app.config["UPLOAD_FOLDER"]
+        vip_folder = os.path.join(upload_folder, "vip_profiles")
+        os.makedirs(vip_folder, exist_ok=True)
+
+        # Delete old image if exists
+        if vip.vip_image_url:
+            old_image_path = os.path.join(upload_folder, vip.vip_image_url)
+            if os.path.exists(old_image_path):
+                try:
+                    os.remove(old_image_path)
+                except Exception:
+                    pass
+
         db.session.delete(vip)
         db.session.commit()
 
