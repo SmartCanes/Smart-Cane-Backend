@@ -297,8 +297,6 @@ def update_device_name(guardian, device_id):
             return error_response("Device not paired with this guardian", 404)
 
         new_name = data.get("device_name")
-        if not new_name:
-            return error_response("device_name is required", 400)
 
         device_guardian.device_name = new_name
         db.session.commit()
