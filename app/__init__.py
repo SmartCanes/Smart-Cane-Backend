@@ -31,7 +31,7 @@ def register_limiter_handlers(app: Flask):
 
 
 def create_app():
-    DEV_MODE = os.environ.get("DEV_MODE", "development") == "development"
+    MODE = os.environ.get("MODE", "development") == "development"
     backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     env_path = os.path.join(backend_root, ".env")
 
@@ -52,7 +52,7 @@ def create_app():
     app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2MB limit
     app.config["ALLOWED_EXTENSIONS"] = {"png", "jpg", "jpeg", "gif", "webp"}
 
-    if DEV_MODE:
+    if MODE:
         app.config["JWT_COOKIE_SECURE"] = False
         app.config["JWT_COOKIE_SAMESITE"] = "Lax"
         CORS(
