@@ -4,7 +4,7 @@ import string
 from datetime import datetime, timedelta, timezone
 from app.utils.auth import guardian_required, guardian_with_device_required
 from flask import Blueprint, jsonify, make_response, request
-from flask_jwt_extended import create_access_token, create_refresh_token
+from flask_jwt_extended import create_access_token, create_refresh_token, get_jwt_identity, jwt_required
 from sqlalchemy import or_
 from app import db
 from app.models import DeviceGuardian, Guardian, OTP, LoginAttempt
@@ -485,9 +485,14 @@ def logout():
 
 
 @auth_bp.route("/refresh", methods=["POST"])
-@guardian_required
-def refresh(guardian):
+@jwt_required(refresh=True)
+def refresh():
     try:
+        guardian_id = get_jwt_identity()
+        guardian = Guardian.query.get(guardian_id)
+        if not guardian:
+            return error_response("Invalid refresh token", 401)
+
         additional_claims = {
             "guardian_id": guardian.guardian_id,
             "username": guardian.username,
@@ -497,6 +502,8 @@ def refresh(guardian):
         new_access_token = create_access_token(
             identity=str(guardian.guardian_id), additional_claims=additional_claims
         )
+
+        print(f"[TOKEN REFRESH] Guardian {guardian.username} ({guardian.guardian_id}) at {datetime.now(timezone.utc)}")
 
         response_body, status_code = success_response(
             {"success": True, "message": "Access token refreshed"}
