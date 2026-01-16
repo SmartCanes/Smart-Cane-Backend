@@ -148,3 +148,58 @@ def send_welcome_email(recipient_email, guardian_name):
     except Exception as e:
         print(f"Failed to send welcome email: {e}")
         return True
+
+
+def send_guardian_link_otp(
+    recipient_email: str,
+    otp_code: str,
+    subject: str = "Your OTP",
+    extra_message: str = "",
+) -> bool:
+    """
+    Sends an OTP or invite email to the specified recipient.
+
+    Parameters:
+    - recipient_email: str - the email address to send to
+    - otp_code: str - the OTP or token (used in body)
+    - subject: str - email subject line
+    - extra_message: str - additional message or link to include in the email
+
+    Returns:
+    - bool: True if email sent successfully, False otherwise
+    """
+    try:
+        # Sender credentials
+        sender_email = "yourapp@gmail.com"  # Replace with your Gmail
+        sender_password = "APP_PASSWORD"  # Use Gmail App Password
+
+        # Create the email message
+        msg = MIMEMultipart()
+        msg["From"] = sender_email
+        msg["To"] = recipient_email
+        msg["Subject"] = subject
+
+        # HTML body (clickable link supported)
+        html_content = f"""
+        <html>
+        <body>
+            <p>Hello,</p>
+            <p>{extra_message}</p>
+            <p>Your OTP / token: <strong>{otp_code}</strong></p>
+            <p>If you did not request this, please ignore this email.</p>
+        </body>
+        </html>
+        """
+
+        msg.attach(MIMEText(html_content, "html"))
+
+        # Connect to Gmail SMTP server
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(sender_email, sender_password)
+            server.sendmail(sender_email, recipient_email, msg.as_string())
+
+        return True
+
+    except Exception as e:
+        print(f"[EMAIL ERROR] Failed to send email to {recipient_email}: {e}")
+        return False

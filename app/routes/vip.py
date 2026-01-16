@@ -135,6 +135,7 @@ def update_vip(guardian, device_id):
             "middle_name",
             "last_name",
             "vip_image_url",
+            "relationship",
             "province",
             "city",
             "barangay",
@@ -150,6 +151,7 @@ def update_vip(guardian, device_id):
         device_guardian.relationship = data.get(
             "relationship", device_guardian.relationship
         )
+        
         device_guardian.is_emergency_contact = bool(
             data.get("is_emergency_contact", device_guardian.is_emergency_contact)
         )

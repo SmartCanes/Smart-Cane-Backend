@@ -1,10 +1,13 @@
+import os
 from flask import Blueprint, request
 from datetime import datetime, timedelta, timezone
 import secrets
 
 from app import db
-from app.models import Device, DeviceGuardian, Guardian
+from app.models import OTP, Device, DeviceGuardian, Guardian
+from app.routes.auth import check_otp_rate_limit, generate_otp
 from app.utils.auth import guardian_required
+from app.utils.email_service import send_guardian_link_otp
 from app.utils.responses import success_response, error_response
 from app.models import VIP
 from app.utils.serializer import model_to_dict
@@ -349,3 +352,101 @@ def update_device_active_status(guardian, device_id):
     except Exception as e:
         db.session.rollback()
         return error_response("Failed to update device active status", 500, str(e))
+
+
+@device.route("/<int:device_id>/invite-guardian", methods=["POST"])
+@guardian_required
+def invite_guardian_to_device_link(guardian, device_id):
+    try:
+        data = request.get_json()
+        email = data.get("email")
+
+        if not email:
+            return error_response("Email is required", 400)
+
+        device = Device.query.get(device_id)
+        if not device:
+            return error_response("Device not found", 404)
+
+        if not check_otp_rate_limit(email, "vip_guardian_invite"):
+            return error_response(
+                "Too many invite attempts. Please try again later.", 429
+            )
+
+        token = secrets.token_urlsafe(24)
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+
+        otp_record = OTP(
+            email=email,
+            otp_code=token,
+            expires_at=expires_at,
+            is_used=False,
+            purpose="vip_guardian_invite_link",
+        )
+
+        db.session.add(otp_record)
+        db.session.commit()
+
+        FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+
+        invite_link = f"{FRONTEND_URL}/guardian-invite?token={token}"
+
+        email_sent = send_guardian_link_otp(
+            recipient_email=email,
+            otp_code=token,
+            subject="VIP Guardian Invitation",
+            extra_message=f"You have been invited to become a guardian for {vip.first_name} {vip.last_name}.\n\nClick this link to accept:\n{invite_link}",
+        )
+
+        if not email_sent:
+            return error_response("Failed to send invite email", 500)
+
+        return success_response(message="Guardian invite sent successfully via link")
+
+    except Exception as e:
+        db.session.rollback()
+        return error_response("Failed to send guardian invite", 500, str(e))
+
+
+@device.route("/vip/accept-invite", methods=["POST"])
+@guardian_required
+def accept_guardian_invite_link(guardian):
+    try:
+        data = request.get_json()
+        token = data.get("token")
+
+        if not token:
+            return error_response("Invite token is required", 400)
+
+        otp = OTP.query.filter_by(
+            otp_code=token, is_used=False, purpose="vip_guardian_invite_link"
+        ).first()
+
+        if not otp:
+            return error_response("Invalid or expired invite link", 400)
+
+        if datetime.now(timezone.utc) > otp.expires_at.replace(tzinfo=timezone.utc):
+            return error_response("Invite link has expired", 400)
+
+        device_guardian = DeviceGuardian.query.filter_by(
+            guardian_id=guardian.guardian_id
+        ).first()
+
+        if not device_guardian:
+            return error_response("Guardian has no registered device", 404)
+
+        device = Device.query.get(device_guardian.device_id)
+        device.vip_id = Device.query.get(device_guardian.device_id).vip_id or otp.vip_id
+
+        otp.is_used = True
+        otp.used_at = datetime.now(timezone.utc)
+
+        db.session.commit()
+
+        return success_response(
+            message="Guardian successfully assigned to VIP via invite link"
+        )
+
+    except Exception as e:
+        db.session.rollback()
+        return error_response("Failed to accept guardian invite", 500, str(e))
