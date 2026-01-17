@@ -5,9 +5,9 @@ import secrets
 
 from app import db
 from app.models import OTP, Device, DeviceGuardian, Guardian
-from app.routes.auth import check_otp_rate_limit, generate_otp
+from app.routes.auth import check_otp_rate_limit
 from app.utils.auth import guardian_required
-from app.utils.email_service import send_guardian_link_otp
+from app.utils.email_service import send_guardian_invite_email
 from app.utils.responses import success_response, error_response
 from app.models import VIP
 from app.utils.serializer import model_to_dict
@@ -358,11 +358,14 @@ def update_device_active_status(guardian, device_id):
 @guardian_required
 def invite_guardian_to_device_link(guardian, device_id):
     try:
-        data = request.get_json()
-        email = data.get("email")
+        data = request.get_json() or {}
+        email = data.get("email", "")
 
         if not email:
             return error_response("Email is required", 400)
+
+        if email == guardian.email:
+            return error_response("Cannot invite yourself as guardian", 400)
 
         device = Device.query.get(device_id)
         if not device:
@@ -372,6 +375,9 @@ def invite_guardian_to_device_link(guardian, device_id):
             return error_response(
                 "Too many invite attempts. Please try again later.", 429
             )
+
+        vip = VIP.query.get(device.vip_id) if device.vip_id else None
+        vip_name = f"{vip.first_name} {vip.last_name}" if vip else None
 
         token = secrets.token_urlsafe(24)
         expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
@@ -388,20 +394,24 @@ def invite_guardian_to_device_link(guardian, device_id):
         db.session.commit()
 
         FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
-
         invite_link = f"{FRONTEND_URL}/guardian-invite?token={token}"
 
-        email_sent = send_guardian_link_otp(
+        print(guardian.first_name)
+        email_sent = send_guardian_invite_email(
             recipient_email=email,
-            otp_code=token,
-            subject="VIP Guardian Invitation",
-            extra_message=f"You have been invited to become a guardian for {vip.first_name} {vip.last_name}.\n\nClick this link to accept:\n{invite_link}",
+            invite_link=invite_link,
+            guardian_name=guardian.first_name,
+            vip_name=vip_name,
+            sender_name=guardian.first_name + " " + guardian.last_name,
         )
 
         if not email_sent:
             return error_response("Failed to send invite email", 500)
 
-        return success_response(message="Guardian invite sent successfully via link")
+        return success_response(
+            data={"email": email} or {},
+            message="Guardian invite sent successfully via link",
+        )
 
     except Exception as e:
         db.session.rollback()
@@ -444,7 +454,8 @@ def accept_guardian_invite_link(guardian):
         db.session.commit()
 
         return success_response(
-            message="Guardian successfully assigned to VIP via invite link"
+            data={"guardian_id": device_guardian.guardian_id},
+            message="Guardian successfully assigned to VIP via invite link",
         )
 
     except Exception as e:

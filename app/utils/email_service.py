@@ -150,56 +150,121 @@ def send_welcome_email(recipient_email, guardian_name):
         return True
 
 
-def send_guardian_link_otp(
-    recipient_email: str,
-    otp_code: str,
-    subject: str = "Your OTP",
-    extra_message: str = "",
-) -> bool:
+def send_guardian_invite_email(
+    recipient_email, invite_link, guardian_name=None, vip_name=None, sender_name=None
+):
     """
-    Sends an OTP or invite email to the specified recipient.
-
-    Parameters:
-    - recipient_email: str - the email address to send to
-    - otp_code: str - the OTP or token (used in body)
-    - subject: str - email subject line
-    - extra_message: str - additional message or link to include in the email
-
-    Returns:
-    - bool: True if email sent successfully, False otherwise
+    Send VIP Guardian invitation email using SMTP
     """
     try:
-        # Sender credentials
-        sender_email = "yourapp@gmail.com"  # Replace with your Gmail
-        sender_password = "APP_PASSWORD"  # Use Gmail App Password
+        # Email configuration from environment variables
+        smtp_server = os.environ.get("MAIL_SERVER", "smtp.gmail.com")
+        smtp_port = int(os.environ.get("MAIL_PORT", 587))
+        email_username = os.environ.get("MAIL_USERNAME", "")
+        email_password = os.environ.get("MAIL_PASSWORD", "")
+        sender_name = os.environ.get("MAIL_SENDER_NAME", "iCane Smart Cane")
 
-        # Create the email message
-        msg = MIMEMultipart()
-        msg["From"] = sender_email
+        # Fallback to console output if no credentials
+        if not email_username or not email_password:
+            print("=" * 60)
+            print(
+                "GUARDIAN INVITE EMAIL (Console Output - Configure SMTP for real emails)"
+            )
+            print(f"TO: {recipient_email}")
+            print(f"VIP: {vip_name or '—'}")
+            print(f"Guardian Name: {guardian_name or '—'}")
+            print(f"Invite Link: {invite_link}")
+            print("=" * 60)
+            return True
+
+        # Create message
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"VIP Guardian Invitation - {vip_name or ''}".strip()
+        msg["From"] = formataddr((sender_name, email_username))
         msg["To"] = recipient_email
-        msg["Subject"] = subject
 
-        # HTML body (clickable link supported)
+        # HTML content
         html_content = f"""
+        <!DOCTYPE html>
         <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                .header {{ background: #1C253C; color: white; padding: 20px; text-align: center; }}
+                .content {{ background: #f9f9f9; padding: 30px; border-radius: 8px; }}
+                .button {{
+                    display: inline-block;
+                    padding: 12px 20px;
+                    margin: 20px 0;
+                    background-color: #2ECC71;
+                    color: white;
+                    font-weight: bold;
+                    text-decoration: none;
+                    border-radius: 6px;
+                }}
+                .footer {{ background: #ddd; padding: 15px; text-align: center; font-size: 12px; color: #666; }}
+            </style>
+        </head>
         <body>
-            <p>Hello,</p>
-            <p>{extra_message}</p>
-            <p>Your OTP / token: <strong>{otp_code}</strong></p>
-            <p>If you did not request this, please ignore this email.</p>
+            <div class="container">
+                <div class="header">
+                    <h1>iCane: Smart Cane</h1>
+                </div>
+                <div class="content">
+                    <h2>Hello {guardian_name or 'Guardian'},</h2>
+                    <p>You have been invited to become a guardian for VIP {vip_name or '—'}.</p>
+                    <p>Click the button below to accept the invitation:</p>
+                    <a href="{invite_link}" class="button">Accept Invitation</a>
+                    <p>If the button doesn't work, copy and paste this link into your browser:</p>
+                    <p><a href="{invite_link}">{invite_link}</a></p>
+                    <p>If you did not expect this invitation, you can safely ignore this email.</p>
+                    <p>Best regards,<br>iCane Smart Cane Team</p>
+                </div>
+                <div class="footer">
+                    <p>&copy; 2026 iCane Smart Cane. All rights reserved.</p>
+                </div>
+            </div>
         </body>
         </html>
         """
 
+        # Plain text fallback
+        text_content = f"""
+        Hello {guardian_name or 'Guardian'},
+
+        You have been invited to become a guardian for VIP {vip_name or '—'}.
+
+        Accept the invitation by clicking this link: {invite_link}
+
+        If you did not expect this invitation, you can ignore this email.
+
+        Best regards,
+        {sender_name or 'iCane Smart Cane Team'}
+        """
+
+        # Attach both
+        msg.attach(MIMEText(text_content, "plain"))
         msg.attach(MIMEText(html_content, "html"))
 
-        # Connect to Gmail SMTP server
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(sender_email, sender_password)
-            server.sendmail(sender_email, recipient_email, msg.as_string())
+        # Send email via SMTP
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            server.login(email_username, email_password)
+            server.send_message(msg)
 
+        print(f"Guardian invite email sent successfully to {recipient_email}")
         return True
 
     except Exception as e:
-        print(f"[EMAIL ERROR] Failed to send email to {recipient_email}: {e}")
-        return False
+        print(f"[EMAIL ERROR] Failed to send guardian invite to {recipient_email}: {e}")
+        # Fallback to console
+        print("=" * 60)
+        print("GUARDIAN INVITE EMAIL (Fallback - SMTP Failed)")
+        print(f"TO: {recipient_email}")
+        print(f"VIP: {vip_name or '—'}")
+        print(f"Guardian Name: {guardian_name or '—'}")
+        print(f"Invite Link: {invite_link}")
+        print("=" * 60)
+        return True
