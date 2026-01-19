@@ -37,7 +37,7 @@ def verify_guardian_invite_token(token: str) -> dict:
 
 @device.route("/decode-invite/<token>", methods=["GET"])
 def decode_guardian_invite(token):
-    
+
     try:
         try:
             payload = verify_guardian_invite_token(token)
@@ -611,3 +611,61 @@ def accept_guardian_invite(token):
     except Exception as e:
         db.session.rollback()
         return error_response("Failed to process invitation", 500, str(e))
+
+
+@device.route("/<int:device_id>/guardians", methods=["GET"])
+@guardian_required
+def get_device_guardians(guardian, device_id):
+    try:
+        if not device_id:
+            return error_response("device_id is required", 400)
+
+        device = Device.query.get(device_id)
+        if not device:
+            return error_response("Device not found", 404)
+
+        requester_link = DeviceGuardian.query.filter_by(
+            device_id=device_id,
+            guardian_id=guardian.guardian_id,
+        ).first()
+
+        if not requester_link:
+            return error_response(
+                "You are not authorized to view guardians for this device", 403
+            )
+
+        device_guardians = (
+            db.session.query(DeviceGuardian, Guardian)
+            .join(Guardian, Guardian.guardian_id == DeviceGuardian.guardian_id)
+            .filter(DeviceGuardian.device_id == device_id)
+            .all()
+        )
+
+        guardians = []
+        for dg, g in device_guardians:
+            guardians.append(
+                {
+                    "guardian_id": g.guardian_id,
+                    "username": g.username,
+                    "first_name": g.first_name,
+                    "middle_name": g.middle_name,
+                    "last_name": g.last_name,
+                    "email": g.email,
+                    "contact_number": g.contact_number,
+                    "role": g.role,
+                    "relationship": dg.relationship,
+                    "is_emergency_contact": bool(dg.is_emergency_contact),
+                    "assigned_at": (
+                        dg.assigned_at.isoformat() if dg.assigned_at else None
+                    ),
+                }
+            )
+
+        return success_response(
+            data={"guardians": guardians},
+            message="Guardians associated with device retrieved successfully",
+        )
+
+    except Exception as e:
+        db.session.rollback()
+        return error_response("Failed to retrieve guardians for device", 500, str(e))
