@@ -30,6 +30,44 @@ class LoginAttempt(db.Model):
     created_at = db.Column(db.TIMESTAMP, default=datetime.now(timezone.utc))
 
 
+class GuardianInvitation(db.Model):
+    __tablename__ = "guardian_invitations"
+    __table_args__ = {"schema": "smart_cane_db"}
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    token = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    email = db.Column(db.String(255), nullable=False)
+
+    device_id = db.Column(
+        db.Integer,
+        db.ForeignKey("smart_cane_db.device_tbl.device_id"),
+        nullable=False,
+    )
+
+    invited_by_guardian_id = db.Column(
+        db.Integer,
+        db.ForeignKey("smart_cane_db.guardian_tbl.guardian_id"),
+        nullable=False,
+    )
+
+    status = db.Column(
+        db.Enum(
+            "pending",
+            "accepted",
+            "expired",
+            "revoked",
+            name="invite_status",
+            schema="smart_cane_db",
+        ),
+        default="pending",
+        nullable=False,
+    )
+
+    expires_at = db.Column(db.DateTime, nullable=False)
+    accepted_at = db.Column(db.TIMESTAMP)
+
+
 class VIP(db.Model):
     __tablename__ = "vip_tbl"
     __table_args__ = {"schema": "smart_cane_db"}
@@ -115,6 +153,7 @@ class Device(db.Model):
     )
 
     guardian_links = db.relationship("DeviceGuardian", backref="device", lazy=True)
+
 
 class DeviceGuardian(db.Model):
     __tablename__ = "device_guardian_tbl"

@@ -1,11 +1,13 @@
 import os
-from flask import Blueprint, request
+from flask import Blueprint, current_app, request
 from datetime import datetime, timedelta, timezone
 import secrets
 
+from flask_jwt_extended import jwt_required
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+
 from app import db
-from app.models import OTP, Device, DeviceGuardian, Guardian
-from app.routes.auth import check_otp_rate_limit
+from app.models import Device, DeviceGuardian, Guardian, GuardianInvitation
 from app.utils.auth import guardian_required
 from app.utils.email_service import send_guardian_invite_email
 from app.utils.responses import success_response, error_response
@@ -13,6 +15,24 @@ from app.models import VIP
 from app.utils.serializer import model_to_dict
 
 device = Blueprint("device", __name__)
+
+
+INVITE_TOKEN_SALT = "guardian-invite"
+INVITE_TOKEN_MAX_AGE = 60 * 60 * 24
+
+
+def generate_guardian_invite_token(payload: dict) -> str:
+    serializer = URLSafeTimedSerializer(current_app.config["SECRET_KEY"])
+    return serializer.dumps(payload, salt=INVITE_TOKEN_SALT)
+
+
+def verify_guardian_invite_token(token: str) -> dict:
+    serializer = URLSafeTimedSerializer(current_app.config["SECRET_KEY"])
+    return serializer.loads(
+        token,
+        salt=INVITE_TOKEN_SALT,
+        max_age=INVITE_TOKEN_MAX_AGE,
+    )
 
 
 @device.route("/generate", methods=["POST"])
@@ -359,58 +379,76 @@ def update_device_active_status(guardian, device_id):
 def invite_guardian_to_device_link(guardian, device_id):
     try:
         data = request.get_json() or {}
-        email = data.get("email", "")
+        email = data.get("email")
 
         if not email:
             return error_response("Email is required", 400)
 
         if email == guardian.email:
-            return error_response("Cannot invite yourself as guardian", 400)
+            return error_response("You cannot invite yourself", 400)
 
         device = Device.query.get(device_id)
         if not device:
             return error_response("Device not found", 404)
 
-        if not check_otp_rate_limit(email, "vip_guardian_invite"):
-            return error_response(
-                "Too many invite attempts. Please try again later.", 429
-            )
+        guardian_existing = Guardian.query.filter_by(email=email).first() if email else None
+
+        if guardian_existing:
+            device_guardian = DeviceGuardian.query.filter_by(
+                device_id=device_id, guardian_id=guardian_existing.guardian_id
+            ).first()
+            if device_guardian:
+                return error_response("The user is already linked to this device", 400)
+
+        existing_invite = GuardianInvitation.query.filter_by(
+            email=email,
+            device_id=device_id,
+            status="pending",
+        ).first()
+
+        if existing_invite:
+            return error_response("An invitation is already pending", 409)
 
         vip = VIP.query.get(device.vip_id) if device.vip_id else None
         vip_name = f"{vip.first_name} {vip.last_name}" if vip else None
 
-        token = secrets.token_urlsafe(24)
+        token = generate_guardian_invite_token(
+            {
+                "email": email,
+                "device_id": device_id,
+                "invited_by_guardian_id": guardian.guardian_id,
+            }
+        )
         expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
 
-        otp_record = OTP(
+        invitation = GuardianInvitation(
+            token=token,
             email=email,
-            otp_code=token,
+            device_id=device_id,
+            invited_by_guardian_id=guardian.guardian_id,
             expires_at=expires_at,
-            is_used=False,
-            purpose="vip_guardian_invite_link",
         )
-
-        db.session.add(otp_record)
+     
+        db.session.add(invitation)
         db.session.commit()
 
         FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
-        invite_link = f"{FRONTEND_URL}/guardian-invite?token={token}"
+        invite_link = f"{FRONTEND_URL}/guardian-invite/{token}"
 
-        print(guardian.first_name)
         email_sent = send_guardian_invite_email(
             recipient_email=email,
             invite_link=invite_link,
             guardian_name=guardian.first_name,
             vip_name=vip_name,
-            sender_name=guardian.first_name + " " + guardian.last_name,
+            sender_name=f"{guardian.first_name} {guardian.last_name}",
         )
 
         if not email_sent:
             return error_response("Failed to send invite email", 500)
 
         return success_response(
-            data={"email": email} or {},
-            message="Guardian invite sent successfully via link",
+            data={"email": email},
+            message="Guardian invite sent successfully",
         )
 
     except Exception as e:
@@ -418,46 +456,136 @@ def invite_guardian_to_device_link(guardian, device_id):
         return error_response("Failed to send guardian invite", 500, str(e))
 
 
-@device.route("/vip/accept-invite", methods=["POST"])
-@guardian_required
-def accept_guardian_invite_link(guardian):
+from flask_jwt_extended import get_jwt_identity 
+
+
+@device.route("/accept-invite/<token>", methods=["GET"])
+@jwt_required(optional=True)
+def accept_guardian_invite(token):
     try:
-        data = request.get_json()
-        token = data.get("token")
+        try:
+            payload = verify_guardian_invite_token(token)
+        except SignatureExpired:
+            return error_response("Invite link has expired", 410)
+        except BadSignature:
+            return error_response("Invalid invite link", 400)
 
-        if not token:
-            return error_response("Invite token is required", 400)
+        current_guardian_id = int(get_jwt_identity()) if get_jwt_identity() else None
 
-        otp = OTP.query.filter_by(
-            otp_code=token, is_used=False, purpose="vip_guardian_invite_link"
+        invitation = GuardianInvitation.query.filter_by(
+            token=token,
+            status="pending",
         ).first()
 
-        if not otp:
+        if not invitation:
             return error_response("Invalid or expired invite link", 400)
 
-        if datetime.now(timezone.utc) > otp.expires_at.replace(tzinfo=timezone.utc):
-            return error_response("Invite link has expired", 400)
+        if (
+            current_guardian_id
+            and current_guardian_id == invitation.invited_by_guardian_id
+        ):
+            return error_response("You cannot accept your own invitation.", 403)
 
-        device_guardian = DeviceGuardian.query.filter_by(
-            guardian_id=guardian.guardian_id
-        ).first()
+        if datetime.now(timezone.utc) > invitation.expires_at.replace(
+            tzinfo=timezone.utc
+        ):
+            invitation.status = "expired"
+            db.session.commit()
+            return error_response("Invite link has expired", 410)
 
-        if not device_guardian:
-            return error_response("Guardian has no registered device", 404)
+        if (
+            payload["email"] != invitation.email
+            or payload["device_id"] != invitation.device_id
+        ):
+            return error_response("Invalid invite link", 400)
 
-        device = Device.query.get(device_guardian.device_id)
-        device.vip_id = Device.query.get(device_guardian.device_id).vip_id or otp.vip_id
+        existing_guardian = Guardian.query.filter_by(email=invitation.email).first()
 
-        otp.is_used = True
-        otp.used_at = datetime.now(timezone.utc)
+        # User is logged in 
+        if current_guardian_id:
+            if (
+                existing_guardian
+                and existing_guardian.guardian_id != current_guardian_id
+            ):
+                return error_response(
+                    "This invitation is for a different guardian account.",
+                    403,
+                )
 
-        db.session.commit()
+            guardian_to_link = existing_guardian or Guardian.query.get(
+                current_guardian_id
+            )
+
+            existing_link = DeviceGuardian.query.filter_by(
+                guardian_id=guardian_to_link.guardian_id,
+                device_id=invitation.device_id,
+            ).first()
+
+            if existing_link:
+                return error_response("You are already linked to this device.", 400)
+
+            db.session.add(
+                DeviceGuardian(
+                    guardian_id=guardian_to_link.guardian_id,
+                    device_id=invitation.device_id,
+                    assigned_at=datetime.now(timezone.utc),
+                )
+            )
+
+            invitation.status = "accepted"
+            invitation.accepted_at = datetime.now(timezone.utc)
+            db.session.commit()
+
+            return success_response(
+                data={
+                    "user_exists": True,
+                    "guardian_id": guardian_to_link.guardian_id,
+                    "redirect_to": "dashboard",
+                    "email": invitation.email,
+                },
+                message="Invitation accepted and device linked.",
+            )
+
+        # User not logged in but account exists
+        if existing_guardian:
+            existing_link = DeviceGuardian.query.filter_by(
+                guardian_id=existing_guardian.guardian_id,
+                device_id=invitation.device_id,
+            ).first()
+
+            if existing_link:
+                return error_response("You are already linked to this device.", 400)
+
+            db.session.add(
+                DeviceGuardian(
+                    guardian_id=existing_guardian.guardian_id,
+                    device_id=invitation.device_id,
+                    assigned_at=datetime.now(timezone.utc),
+                )
+            )
+
+            invitation.status = "accepted"
+            invitation.accepted_at = datetime.now(timezone.utc)
+            db.session.commit()
+
+            return success_response(
+                data={
+                    "user_exists": True,
+                    "guardian_id": existing_guardian.guardian_id,
+                    "redirect_to": "login",
+                    "email": invitation.email,
+                },
+                message="Invitation accepted. Please log in.",
+            )
 
         return success_response(
-            data={"guardian_id": device_guardian.guardian_id},
-            message="Guardian successfully assigned to VIP via invite link",
+            data={
+                "user_exists": False,
+                "redirect_to": "register",
+            },
+            message="Please register to accept the invitation.",
         )
 
     except Exception as e:
         db.session.rollback()
-        return error_response("Failed to accept guardian invite", 500, str(e))
+        return error_response("Failed to process invitation", 500, str(e))
