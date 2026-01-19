@@ -2,12 +2,15 @@ from datetime import datetime, timedelta, timezone
 import random
 import string
 from datetime import datetime, timedelta, timezone
+
+from itsdangerous import BadSignature, SignatureExpired
+from app.routes.device import verify_guardian_invite_token
 from app.utils.auth import guardian_required, guardian_with_device_required
 from flask import Blueprint, jsonify, make_response, request
 from flask_jwt_extended import create_access_token, create_refresh_token, get_jwt_identity, jwt_required
 from sqlalchemy import or_
 from app import db
-from app.models import DeviceGuardian, Guardian, OTP, LoginAttempt
+from app.models import Device, DeviceGuardian, Guardian, OTP, GuardianInvitation, LoginAttempt
 from app.utils.responses import success_response, error_response
 from app.utils.email_service import send_otp_email
 from app import limiter
@@ -198,7 +201,7 @@ def check_credentials():
 @auth_bp.route("/register", methods=["POST"])
 def register():
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
 
         required_fields = [
             "username",
@@ -218,11 +221,43 @@ def register():
             if not data.get(field):
                 return error_response(f"Missing required field: {field}", 400)
 
-        # Check if username or email already exists
+        invite_token = data.get("invite_token")
+        invitation = None
+        
+        if invite_token:
+            try:
+                verify_guardian_invite_token(invite_token)
+            except SignatureExpired:
+                return error_response("Invite link has expired", 410)
+            except BadSignature:
+                return error_response("Invalid invite link", 400)
+
+            invitation = GuardianInvitation.query.filter_by(
+                token=invite_token,
+                status="pending",
+            ).first()
+
+            if not invitation:
+                return error_response("Invite is no longer valid", 400)
+
+            if invitation.email != data["email"]:
+                return error_response(
+                    "Invite email does not match registration email", 400
+                )
+
+            if datetime.now(timezone.utc) > invitation.expires_at.replace(
+                tzinfo=timezone.utc
+            ):
+                invitation.status = "expired"
+                db.session.commit()
+                return error_response("Invite link has expired", 410)
+
+     
         if Guardian.query.filter_by(username=data["username"]).first():
             return error_response(
                 "Username already exists, please use another username", 400
             )
+
         if Guardian.query.filter_by(email=data["email"]).first():
             return error_response("Email already exists", 400)
 
@@ -241,10 +276,34 @@ def register():
             guardian_image_url=data.get("guardian_image_url"),
         )
 
-        # Hash password before saving
         guardian.set_password(data["password"])
 
         db.session.add(guardian)
+        db.session.flush() 
+
+        if invitation:
+            device = Device.query.get(invitation.device_id)
+            if not device:
+                db.session.rollback()
+                return error_response("Invited device no longer exists", 404)
+
+            existing_link = DeviceGuardian.query.filter_by(
+                guardian_id=guardian.guardian_id,
+                device_id=invitation.device_id,
+            ).first()
+
+            if not existing_link:
+                db.session.add(
+                    DeviceGuardian(
+                        guardian_id=guardian.guardian_id,
+                        device_id=invitation.device_id,
+                        assigned_at=datetime.now(timezone.utc),
+                    )
+                )
+
+            invitation.status = "accepted"
+            invitation.accepted_at = datetime.now(timezone.utc)
+
         db.session.commit()
 
         additional_claims = {
@@ -254,7 +313,10 @@ def register():
         }
 
         response_body, status_code = success_response(
-            data={"guardian_id": guardian.guardian_id},
+            data={
+                "guardian_id": guardian.guardian_id,
+                "invite_accepted": bool(invitation),
+            },
             message="Guardian registered successfully",
             status_code=201,
         )
@@ -274,12 +336,6 @@ def register():
         )
 
         return response
-
-        # return success_response(
-        #     data={"guardian_id": guardian.guardian_id},
-        #     message="Guardian registered successfully",
-        #     status_code=201,
-        # )
 
     except Exception as e:
         db.session.rollback()

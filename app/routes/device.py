@@ -35,6 +35,26 @@ def verify_guardian_invite_token(token: str) -> dict:
     )
 
 
+@device.route("/decode-invite/<token>", methods=["GET"])
+def decode_guardian_invite(token):
+    
+    try:
+        try:
+            payload = verify_guardian_invite_token(token)
+        except SignatureExpired:
+            return error_response("Invite link has expired", 410)
+        except BadSignature:
+            return error_response("Invalid invite link", 400)
+
+        return success_response(
+            data=payload,
+            message="Invite token decoded successfully",
+        )
+
+    except Exception as e:
+        return error_response("Failed to decode invite token", 500, str(e))
+
+
 @device.route("/generate", methods=["POST"])
 @guardian_required
 def generate_pairing_token(guardian):
@@ -391,7 +411,9 @@ def invite_guardian_to_device_link(guardian, device_id):
         if not device:
             return error_response("Device not found", 404)
 
-        guardian_existing = Guardian.query.filter_by(email=email).first() if email else None
+        guardian_existing = (
+            Guardian.query.filter_by(email=email).first() if email else None
+        )
 
         if guardian_existing:
             device_guardian = DeviceGuardian.query.filter_by(
@@ -428,7 +450,7 @@ def invite_guardian_to_device_link(guardian, device_id):
             invited_by_guardian_id=guardian.guardian_id,
             expires_at=expires_at,
         )
-     
+
         db.session.add(invitation)
         db.session.commit()
 
@@ -456,7 +478,7 @@ def invite_guardian_to_device_link(guardian, device_id):
         return error_response("Failed to send guardian invite", 500, str(e))
 
 
-from flask_jwt_extended import get_jwt_identity 
+from flask_jwt_extended import get_jwt_identity
 
 
 @device.route("/accept-invite/<token>", methods=["GET"])
@@ -501,7 +523,7 @@ def accept_guardian_invite(token):
 
         existing_guardian = Guardian.query.filter_by(email=invitation.email).first()
 
-        # User is logged in 
+        # User is logged in
         if current_guardian_id:
             if (
                 existing_guardian
