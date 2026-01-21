@@ -711,12 +711,18 @@ def get_all_device_guardians(guardian):
                     "role": g.role,
                     "relationship": dg.relationship,
                     "is_emergency_contact": bool(dg.is_emergency_contact),
+                    "guardian_image_url": g.guardian_image_url,
                     "assigned_at": (
                         dg.assigned_at.isoformat() if dg.assigned_at else None
                     ),
                 }
             )
 
+        for device_id, guardians in guardians_by_device.items():
+            guardians.sort(
+                key=lambda g: 0 if g["guardian_id"] == guardian.guardian_id else 1
+            )
+            
         guardians_by_device_list = [
             {"deviceId": device_id, "guardians": guardians}
             for device_id, guardians in guardians_by_device.items()
