@@ -121,6 +121,11 @@ def update_vip(guardian, device_id):
         if not device_guardian:
             return error_response("Device not paired with this guardian", 404)
 
+        if device_guardian.role not in ["primary", "secondary"]:
+            return error_response(
+                "Only primary or secondary guardians can update VIP", 403
+            )
+
         device = Device.query.get(device_id)
 
         vip = device.vip
@@ -151,7 +156,7 @@ def update_vip(guardian, device_id):
         device_guardian.relationship = data.get(
             "relationship", device_guardian.relationship
         )
-        
+
         device_guardian.is_emergency_contact = bool(
             data.get("is_emergency_contact", device_guardian.is_emergency_contact)
         )
@@ -178,13 +183,17 @@ def delete_vip(guardian, device_id):
         if not device_id:
             return error_response("device_id is required", 400)
 
-        # Check if the guardian is linked to this device
         device_guardian = DeviceGuardian.query.filter_by(
             device_id=device_id, guardian_id=guardian.guardian_id
         ).first()
 
         if not device_guardian:
             return error_response("Device not paired with this guardian", 404)
+
+        if device_guardian.role not in ["primary", "secondary"]:
+            return error_response(
+                "Only primary or secondary guardians can update VIP", 403
+            )
 
         device = Device.query.get(device_id)
 

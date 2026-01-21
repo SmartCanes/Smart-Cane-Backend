@@ -193,7 +193,7 @@ def unpair_device(guardian, device_id):
             device.vip_id = None
 
         db.session.delete(device_guardian)
-        db.session.flush() 
+        db.session.flush()
 
         primary_guardians_left = DeviceGuardian.query.filter_by(
             device_id=device_id, role="primary"
@@ -283,6 +283,11 @@ def assign_device_to_vip(guardian, device_id):
 
         if not device_guardian:
             return error_response("Device not paired with this guardian", 404)
+
+        if device_guardian.role not in ["primary", "secondary"]:
+            return error_response(
+                "Only primary or secondary guardians can add VIP profile", 403
+            )
 
         device = Device.query.get(device_id)
 
@@ -427,6 +432,18 @@ def invite_guardian_to_device_link(guardian, device_id):
         device = Device.query.get(device_id)
         if not device:
             return error_response("Device not found", 404)
+
+        device_guardian_link = DeviceGuardian.query.filter_by(
+            device_id=device_id, guardian_id=guardian.guardian_id
+        ).first()
+
+        if not device_guardian_link:
+            return error_response("You are not linked to this device", 403)
+
+        if device_guardian_link.role not in ["primary", "secondary"]:
+            return error_response(
+                "Only primary or secondary guardians can invite new guardians", 403
+            )
 
         guardian_existing = (
             Guardian.query.filter_by(email=email).first() if email else None
@@ -795,9 +812,7 @@ def remove_guardian_from_device(current_guardian, device_id, guardian_id):
             )
 
         if target_link.role == "primary":
-            return error_response(
-                "Primary guardians cannot be removed by anyone", 403
-            )
+            return error_response("Primary guardians cannot be removed by anyone", 403)
         if requester_link.role == "secondary" and target_link.role == "secondary":
             return error_response(
                 "Secondary guardians cannot remove other secondary guardians", 403
@@ -822,7 +837,6 @@ def remove_guardian_from_device(current_guardian, device_id, guardian_id):
             500,
             str(e),
         )
-
 
 
 @device.route("/<int:device_id>/guardians/<int:guardian_id>/role", methods=["PUT"])
