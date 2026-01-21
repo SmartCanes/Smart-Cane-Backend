@@ -732,3 +732,57 @@ def get_all_device_guardians(guardian):
         return error_response(
             "Failed to retrieve guardians for all devices", 500, str(e)
         )
+
+
+@device.route("/<int:device_id>/guardians/<int:guardian_id>", methods=["DELETE"])
+@guardian_required
+def remove_guardian_from_device(guardian, device_id, guardian_id):
+    try:
+        if guardian.guardian_id == guardian_id:
+            return error_response(
+                "You cannot remove yourself from the device",
+                403,
+            )
+
+        requester_link = DeviceGuardian.query.filter_by(
+            device_id=device_id,
+            guardian_id=guardian.guardian_id,
+        ).first()
+
+        if not requester_link:
+            return error_response(
+                "You are not authorized to manage guardians for this device",
+                403,
+            )
+
+        # Check target guardian
+        target_link = DeviceGuardian.query.filter_by(
+            device_id=device_id,
+            guardian_id=guardian_id,
+        ).first()
+
+        if not target_link:
+            return error_response(
+                "Guardian is not linked to this device",
+                404,
+            )
+
+        db.session.delete(target_link)
+        db.session.commit()
+
+        return success_response(
+            message="Guardian removed from device successfully",
+            data={
+                "device_id": device_id,
+                "removed_guardian_id": guardian_id,
+                "requested_by": guardian.guardian_id,
+            },
+        )
+
+    except Exception as e:
+        db.session.rollback()
+        return error_response(
+            "Failed to remove guardian from device",
+            500,
+            str(e),
+        )
