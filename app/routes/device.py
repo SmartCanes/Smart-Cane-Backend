@@ -145,7 +145,10 @@ def pair_device(guardian):
         device.paired_at = datetime.now(timezone.utc)
 
         device_guardian = DeviceGuardian(
-            device_id=device.device_id, guardian_id=guardian_id
+            device_id=device.device_id,
+            guardian_id=guardian_id,
+            role="primary",
+            is_emergency_contact=True,
         )
 
         db.session.add(device_guardian)
@@ -187,21 +190,35 @@ def unpair_device(guardian, device_id):
         if device.vip:
             vip_id = device.vip.vip_id
             db.session.delete(device.vip)
-
-        device.vip_id = None
-        device.is_paired = False
-        device.paired_at = None
+            device.vip_id = None
 
         db.session.delete(device_guardian)
+        db.session.flush() 
+
+        primary_guardians_left = DeviceGuardian.query.filter_by(
+            device_id=device_id, role="primary"
+        ).count()
+
+        if primary_guardians_left == 0:
+            DeviceGuardian.query.filter_by(device_id=device_id).delete()
+            device.is_paired = False
+            device.paired_at = None
+        else:
+            device.is_paired = True
 
         db.session.commit()
+
+        remaining_guardians = DeviceGuardian.query.filter_by(
+            device_id=device_id
+        ).count()
 
         return success_response(
             message="Device unpaired successfully",
             data={
                 "device_id": device.device_id,
                 "vip_id": vip_id,
-                "guardian_id": guardian.guardian_id,
+                "unpaired_guardian_id": guardian.guardian_id,
+                "remaining_guardians": remaining_guardians,
             },
         )
 
@@ -722,7 +739,7 @@ def get_all_device_guardians(guardian):
             guardians.sort(
                 key=lambda g: 0 if g["guardian_id"] == guardian.guardian_id else 1
             )
-            
+
         guardians_by_device_list = [
             {"deviceId": device_id, "guardians": guardians}
             for device_id, guardians in guardians_by_device.items()
@@ -742,9 +759,9 @@ def get_all_device_guardians(guardian):
 
 @device.route("/<int:device_id>/guardians/<int:guardian_id>", methods=["DELETE"])
 @guardian_required
-def remove_guardian_from_device(guardian, device_id, guardian_id):
+def remove_guardian_from_device(current_guardian, device_id, guardian_id):
     try:
-        if guardian.guardian_id == guardian_id:
+        if current_guardian.guardian_id == guardian_id:
             return error_response(
                 "You cannot remove yourself from the device",
                 403,
@@ -752,7 +769,7 @@ def remove_guardian_from_device(guardian, device_id, guardian_id):
 
         requester_link = DeviceGuardian.query.filter_by(
             device_id=device_id,
-            guardian_id=guardian.guardian_id,
+            guardian_id=current_guardian.guardian_id,
         ).first()
 
         if not requester_link:
@@ -761,7 +778,11 @@ def remove_guardian_from_device(guardian, device_id, guardian_id):
                 403,
             )
 
-        # Check target guardian
+        if requester_link.role == "guardian":
+            return error_response(
+                "Guardians with role 'guardian' cannot remove other guardians", 403
+            )
+
         target_link = DeviceGuardian.query.filter_by(
             device_id=device_id,
             guardian_id=guardian_id,
@@ -773,6 +794,15 @@ def remove_guardian_from_device(guardian, device_id, guardian_id):
                 404,
             )
 
+        if target_link.role == "primary":
+            return error_response(
+                "Primary guardians cannot be removed by anyone", 403
+            )
+        if requester_link.role == "secondary" and target_link.role == "secondary":
+            return error_response(
+                "Secondary guardians cannot remove other secondary guardians", 403
+            )
+
         db.session.delete(target_link)
         db.session.commit()
 
@@ -781,7 +811,7 @@ def remove_guardian_from_device(guardian, device_id, guardian_id):
             data={
                 "device_id": device_id,
                 "removed_guardian_id": guardian_id,
-                "requested_by": guardian.guardian_id,
+                "requested_by": current_guardian.guardian_id,
             },
         )
 
@@ -792,3 +822,58 @@ def remove_guardian_from_device(guardian, device_id, guardian_id):
             500,
             str(e),
         )
+
+
+
+@device.route("/<int:device_id>/guardians/<int:guardian_id>/role", methods=["PUT"])
+@guardian_required
+def modify_device_guardian_role(current_guardian, device_id, guardian_id):
+    try:
+        data = request.get_json() or {}
+        new_role = data.get("role")
+
+        if new_role not in ["primary", "secondary", "guardian"]:
+            return error_response(
+                "Invalid role. Must be 'primary', 'secondary', or 'guardian'.", 400
+            )
+
+        requester_link = DeviceGuardian.query.filter_by(
+            device_id=device_id, guardian_id=current_guardian.guardian_id
+        ).first()
+        if not requester_link:
+            return error_response(
+                "You are not authorized to modify guardians for this device", 403
+            )
+
+        if requester_link.role not in ["primary", "secondary", "guardian"]:
+            return error_response(
+                "Only primary or secondary guardians can modify roles", 403
+            )
+
+        target_link = DeviceGuardian.query.filter_by(
+            device_id=device_id, guardian_id=guardian_id
+        ).first()
+        if not target_link:
+            return error_response("Target guardian not found for this device", 404)
+
+        if requester_link.role == "secondary" and target_link.role == "primary":
+            return error_response(
+                "Secondary guardian cannot modify the primary guardian", 403
+            )
+
+        target_link.role = new_role
+        db.session.commit()
+
+        return success_response(
+            data={
+                "device_id": device_id,
+                "guardian_id": guardian_id,
+                "new_role": new_role,
+                "modified_by": current_guardian.guardian_id,
+            },
+            message="Guardian role updated successfully",
+        )
+
+    except Exception as e:
+        db.session.rollback()
+        return error_response("Failed to update guardian role", 500, str(e))
