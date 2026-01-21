@@ -669,3 +669,66 @@ def get_device_guardians(guardian, device_id):
     except Exception as e:
         db.session.rollback()
         return error_response("Failed to retrieve guardians for device", 500, str(e))
+
+
+@device.route("/guardians", methods=["GET"])
+@guardian_required
+def get_all_device_guardians(guardian):
+    try:
+        device_links = DeviceGuardian.query.filter_by(
+            guardian_id=guardian.guardian_id
+        ).all()
+        device_ids = [dl.device_id for dl in device_links]
+
+        if not device_ids:
+            return success_response(
+                data={"guardiansByDevice": []},
+                message="No devices found for this guardian",
+            )
+
+        all_device_guardians = (
+            db.session.query(DeviceGuardian, Guardian)
+            .join(Guardian, Guardian.guardian_id == DeviceGuardian.guardian_id)
+            .filter(DeviceGuardian.device_id.in_(device_ids))
+            .all()
+        )
+
+        guardians_by_device = {}
+        for dg, g in all_device_guardians:
+            device_id = dg.device_id
+            if device_id not in guardians_by_device:
+                guardians_by_device[device_id] = []
+
+            guardians_by_device[device_id].append(
+                {
+                    "guardian_id": g.guardian_id,
+                    "username": g.username,
+                    "first_name": g.first_name,
+                    "middle_name": g.middle_name,
+                    "last_name": g.last_name,
+                    "email": g.email,
+                    "contact_number": g.contact_number,
+                    "role": g.role,
+                    "relationship": dg.relationship,
+                    "is_emergency_contact": bool(dg.is_emergency_contact),
+                    "assigned_at": (
+                        dg.assigned_at.isoformat() if dg.assigned_at else None
+                    ),
+                }
+            )
+
+        guardians_by_device_list = [
+            {"deviceId": device_id, "guardians": guardians}
+            for device_id, guardians in guardians_by_device.items()
+        ]
+
+        return success_response(
+            data={"guardiansByDevice": guardians_by_device_list},
+            message="All device guardians retrieved successfully",
+        )
+
+    except Exception as e:
+        db.session.rollback()
+        return error_response(
+            "Failed to retrieve guardians for all devices", 500, str(e)
+        )
