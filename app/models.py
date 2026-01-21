@@ -166,6 +166,17 @@ class DeviceGuardian(db.Model):
     device_name = db.Column(db.String(255), nullable=True)
     relationship = db.Column(db.String(100), nullable=True)
     is_emergency_contact = db.Column(db.Boolean, default=False)
+    role = db.Column(
+        db.Enum(
+            "primary",
+            "secondary",
+            "guardian",
+            name="guardian_role",
+            schema="smart_cane_db"
+        ),
+        default="guardian",
+        nullable=False
+    )
     guardian_id = db.Column(
         db.Integer,
         db.ForeignKey("smart_cane_db.guardian_tbl.guardian_id"),
