@@ -725,7 +725,7 @@ def get_all_device_guardians(guardian):
                     "last_name": g.last_name,
                     "email": g.email,
                     "contact_number": g.contact_number,
-                    "role": g.role,
+                    "role": dg.role,
                     "relationship": dg.relationship,
                     "is_emergency_contact": bool(dg.is_emergency_contact),
                     "guardian_image_url": g.guardian_image_url,
