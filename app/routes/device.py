@@ -688,6 +688,7 @@ def get_device_guardians(guardian, device_id):
                     "contact_number": g.contact_number,
                     "role": g.role,
                     "relationship": dg.relationship,
+                    "street_address": g.street_address,
                     "is_emergency_contact": bool(dg.is_emergency_contact),
                     "assigned_at": (
                         dg.assigned_at.isoformat() if dg.assigned_at else None
@@ -744,6 +745,7 @@ def get_all_device_guardians(guardian):
                     "contact_number": g.contact_number,
                     "role": dg.role,
                     "relationship": dg.relationship,
+                    "street_address": g.street_address,
                     "is_emergency_contact": bool(dg.is_emergency_contact),
                     "guardian_image_url": g.guardian_image_url,
                     "assigned_at": (
