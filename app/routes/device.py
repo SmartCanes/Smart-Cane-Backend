@@ -848,9 +848,9 @@ def modify_device_guardian_role(current_guardian, device_id, guardian_id):
         data = request.get_json() or {}
         new_role = data.get("role")
 
-        if new_role not in ["primary", "secondary", "guardian"]:
+        if new_role not in ["secondary", "guardian"]:
             return error_response(
-                "Invalid role. Must be 'primary', 'secondary', or 'guardian'.", 400
+                "Invalid role. Must be 'secondary', or 'guardian'.", 400
             )
 
         requester_link = DeviceGuardian.query.filter_by(
