@@ -317,21 +317,16 @@ def assign_device_to_vip(guardian, device_id):
         )
 
         db.session.add(new_vip)
-        db.session.flush()  # get vip_id
+        db.session.flush() 
 
         device.vip_id = new_vip.vip_id
-
-        device_guardian.relationship = data.get("relationship")
-        device_guardian.is_emergency_contact = bool(data.get("is_emergency_contact"))
-
+     
         db.session.commit()
 
         response_data = {
             "device_id": device.device_id,
             "device_serial_number": device.device_serial_number,
             "vip": model_to_dict(new_vip),
-            "relationship": device_guardian.relationship,
-            "is_emergency_contact": bool(device_guardian.is_emergency_contact),
             "paired_at": device.paired_at,
             "guardian_id": guardian.guardian_id,
         }

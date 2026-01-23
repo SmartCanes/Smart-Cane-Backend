@@ -140,7 +140,6 @@ def update_vip(guardian, device_id):
             "middle_name",
             "last_name",
             "vip_image_url",
-            "relationship",
             "province",
             "city",
             "barangay",
@@ -153,20 +152,10 @@ def update_vip(guardian, device_id):
 
         vip.updated_at = datetime.now(timezone.utc)
 
-        device_guardian.relationship = data.get(
-            "relationship", device_guardian.relationship
-        )
-
-        device_guardian.is_emergency_contact = bool(
-            data.get("is_emergency_contact", device_guardian.is_emergency_contact)
-        )
-
         db.session.commit()
 
         response_data = {
-            "vip": model_to_dict(vip),
-            "relationship": device_guardian.relationship,
-            "is_emergency_contact": bool(device_guardian.is_emergency_contact),
+            "vip": model_to_dict(vip)
         }
 
         return success_response(data=response_data, message="VIP updated successfully")
