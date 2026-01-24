@@ -929,6 +929,13 @@ def update_guardian_relationship(guardian, device_id, guardian_id):
                 "Guardians cannot modify relationships of other guardians",
                 403,
             )
+        
+        if requester_link.role == "guardian":
+            return error_response(
+            "You cannot modify relationships",
+            403,
+        )
+
 
         if requester_link.role == "secondary" and target_link.role == "primary":
             return error_response(
