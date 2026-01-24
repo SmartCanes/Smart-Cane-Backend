@@ -921,27 +921,21 @@ def update_guardian_relationship(guardian, device_id, guardian_id):
         if not target_link:
             return error_response("Guardian not linked to this device", 404)
 
-        if (
-            requester_link.role == "guardian"
-            and guardian.guardian_id != guardian_id
-        ):
-            return error_response(
-                "Guardians cannot modify relationships of other guardians",
-                403,
-            )
-        
         if requester_link.role == "guardian":
             return error_response(
-            "You cannot modify relationships",
-            403,
-        )
-
-
-        if requester_link.role == "secondary" and target_link.role == "primary":
-            return error_response(
-                "Secondary guardians cannot modify the primary guardian",
+                "Guardians cannot modify any relationships",
                 403,
             )
+
+        if requester_link.role == "secondary":
+            if (
+                target_link.role in ["primary", "secondary"]
+                and guardian.guardian_id != guardian_id
+            ):
+                return error_response(
+                    "Secondary guardians cannot modify primary or other secondary guardians",
+                    403,
+                )
 
         target_link.relationship = new_relationship.strip()
         db.session.commit()
@@ -988,15 +982,9 @@ def toggle_emergency_guardian(current_guardian, device_id, guardian_id):
         if not target_link:
             return error_response("Guardian not linked to this device", 404)
 
-        if requester_link.role == "guardian":
+        if requester_link.role != "primary":
             return error_response(
-                "Guardians cannot modify emergency settings",
-                403,
-            )
-
-        if requester_link.role == "secondary" and target_link.role == "primary":
-            return error_response(
-                "Secondary guardians cannot modify the primary guardian",
+                "Only primary guardians can modify emergency settings",
                 403,
             )
 
