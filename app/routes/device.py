@@ -993,15 +993,15 @@ def toggle_emergency_guardian(current_guardian, device_id, guardian_id):
                 403,
             )
 
-        if target_link.is_emergency:
-            target_link.is_emergency = False
+        if target_link.is_emergency_contact:
+            target_link.is_emergency_contact = False
             db.session.commit()
 
             return success_response(
                 data={
                     "device_id": device_id,
                     "guardian_id": guardian_id,
-                    "is_emergency": False,
+                    "is_emergency_contact": False,
                     "role": target_link.role,
                 },
                 message="Emergency guardian removed successfully",
@@ -1009,17 +1009,17 @@ def toggle_emergency_guardian(current_guardian, device_id, guardian_id):
 
         DeviceGuardian.query.filter_by(
             device_id=device_id,
-            is_emergency=True,
-        ).update({"is_emergency": False})
+            is_emergency_contact=True,
+        ).update({"is_emergency_contact": False})
 
-        target_link.is_emergency = True
+        target_link.is_emergency_contact = True
         db.session.commit()
 
         return success_response(
             data={
                 "device_id": device_id,
                 "guardian_id": guardian_id,
-                "is_emergency": True,
+                "is_emergency_contact": True,
                 "role": target_link.role,
             },
             message="Emergency guardian set successfully",
