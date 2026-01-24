@@ -888,3 +888,134 @@ def modify_device_guardian_role(current_guardian, device_id, guardian_id):
     except Exception as e:
         db.session.rollback()
         return error_response("Failed to update guardian role", 500, str(e))
+
+
+@device.route(
+    "/<int:device_id>/guardians/<int:guardian_id>/relationship", methods=["PUT"]
+)
+@guardian_required
+def update_guardian_relationship(guardian, device_id, guardian_id):
+    try:
+        data = request.get_json() or {}
+        new_relationship = data.get("relationship")
+
+        if not new_relationship:
+            return error_response("relationship is required", 400)
+
+        requester_link = DeviceGuardian.query.filter_by(
+            device_id=device_id,
+            guardian_id=guardian.guardian_id,
+        ).first()
+
+        if not requester_link:
+            return error_response(
+                "You are not authorized to modify guardians for this device",
+                403,
+            )
+
+        target_link = DeviceGuardian.query.filter_by(
+            device_id=device_id,
+            guardian_id=guardian_id,
+        ).first()
+
+        if not target_link:
+            return error_response("Guardian not linked to this device", 404)
+
+        if (
+            requester_link.role == "guardian"
+            and guardian.guardian_id != guardian_id
+        ):
+            return error_response(
+                "Guardians cannot modify relationships of other guardians",
+                403,
+            )
+
+        if requester_link.role == "secondary" and target_link.role == "primary":
+            return error_response(
+                "Secondary guardians cannot modify the primary guardian",
+                403,
+            )
+
+        target_link.relationship = new_relationship.strip()
+        db.session.commit()
+
+        return success_response(
+            data={
+                "device_id": device_id,
+                "guardian_id": guardian_id,
+                "relationship": target_link.relationship,
+                "updated_by": guardian.guardian_id,
+            },
+            message="Guardian relationship updated successfully",
+        )
+
+    except Exception as e:
+        db.session.rollback()
+        return error_response(
+            "Failed to update guardian relationship",
+            500,
+            str(e),
+        )
+
+
+@device.route("/<int:device_id>/guardians/<int:guardian_id>/emergency", methods=["PUT"])
+@guardian_required
+def set_emergency_guardian(current_guardian, device_id, guardian_id):
+    try:
+        requester_link = DeviceGuardian.query.filter_by(
+            device_id=device_id,
+            guardian_id=current_guardian.guardian_id,
+        ).first()
+
+        if not requester_link:
+            return error_response(
+                "You are not authorized to modify guardians for this device",
+                403,
+            )
+
+        target_link = DeviceGuardian.query.filter_by(
+            device_id=device_id,
+            guardian_id=guardian_id,
+        ).first()
+
+        if not target_link:
+            return error_response("Guardian not linked to this device", 404)
+
+        if requester_link.role == "guardian":
+            return error_response(
+                "Guardians cannot modify emergency settings",
+                403,
+            )
+
+        if requester_link.role == "secondary":
+            if target_link.role == "primary":
+                return error_response(
+                    "Secondary guardians cannot modify the primary guardian",
+                    403,
+                )
+
+        DeviceGuardian.query.filter_by(
+            device_id=device_id,
+            is_emergency=True,
+        ).update({"is_emergency": False})
+
+        target_link.is_emergency = True
+        db.session.commit()
+
+        return success_response(
+            data={
+                "device_id": device_id,
+                "guardian_id": guardian_id,
+                "is_emergency": True,
+                "role": target_link.role,
+            },
+            message="Emergency guardian updated successfully",
+        )
+
+    except Exception as e:
+        db.session.rollback()
+        return error_response(
+            "Failed to update emergency guardian",
+            500,
+            str(e),
+        )
