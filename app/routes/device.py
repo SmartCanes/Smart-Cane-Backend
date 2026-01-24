@@ -960,7 +960,7 @@ def update_guardian_relationship(guardian, device_id, guardian_id):
 
 @device.route("/<int:device_id>/guardians/<int:guardian_id>/emergency", methods=["PUT"])
 @guardian_required
-def set_emergency_guardian(current_guardian, device_id, guardian_id):
+def toggle_emergency_guardian(current_guardian, device_id, guardian_id):
     try:
         requester_link = DeviceGuardian.query.filter_by(
             device_id=device_id,
@@ -987,12 +987,25 @@ def set_emergency_guardian(current_guardian, device_id, guardian_id):
                 403,
             )
 
-        if requester_link.role == "secondary":
-            if target_link.role == "primary":
-                return error_response(
-                    "Secondary guardians cannot modify the primary guardian",
-                    403,
-                )
+        if requester_link.role == "secondary" and target_link.role == "primary":
+            return error_response(
+                "Secondary guardians cannot modify the primary guardian",
+                403,
+            )
+
+        if target_link.is_emergency:
+            target_link.is_emergency = False
+            db.session.commit()
+
+            return success_response(
+                data={
+                    "device_id": device_id,
+                    "guardian_id": guardian_id,
+                    "is_emergency": False,
+                    "role": target_link.role,
+                },
+                message="Emergency guardian removed successfully",
+            )
 
         DeviceGuardian.query.filter_by(
             device_id=device_id,
@@ -1009,7 +1022,7 @@ def set_emergency_guardian(current_guardian, device_id, guardian_id):
                 "is_emergency": True,
                 "role": target_link.role,
             },
-            message="Emergency guardian updated successfully",
+            message="Emergency guardian set successfully",
         )
 
     except Exception as e:
