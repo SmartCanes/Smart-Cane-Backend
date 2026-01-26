@@ -5,9 +5,11 @@ import secrets
 
 from flask_jwt_extended import jwt_required
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+from sqlalchemy import func
 
 from app import db
 from app.models import Device, DeviceGuardian, Guardian, GuardianInvitation
+from app.routes import guardian
 from app.utils.auth import guardian_required
 from app.utils.email_service import send_guardian_invite_email
 from app.utils.responses import success_response, error_response
@@ -1026,4 +1028,54 @@ def toggle_emergency_guardian(current_guardian, device_id, guardian_id):
             "Failed to update emergency guardian",
             500,
             str(e),
+        )
+
+@device.route("/pending-invites", methods=["GET"])
+@guardian_required
+def get_pending_invites_counts(guardian):
+    try:
+        linked_devices = DeviceGuardian.query.filter_by(
+            guardian_id=guardian.guardian_id
+        ).all()
+        device_ids = [link.device_id for link in linked_devices]
+
+        if not device_ids:
+            return success_response(
+                data={"pending_invites_counts": []},
+                message="No devices linked to this guardian"
+            )
+
+        pending_counts = (
+            db.session.query(
+                GuardianInvitation.device_id,
+                func.count(GuardianInvitation.id).label("pending_count")
+            )
+            .filter(
+                GuardianInvitation.device_id.in_(device_ids),
+                GuardianInvitation.status == "pending"
+            )
+            .group_by(GuardianInvitation.device_id)
+            .all()
+        )
+
+        result = [
+            {"device_id": device_id, "pending_invites_count": count}
+            for device_id, count in pending_counts
+        ]
+
+        for device_id in device_ids:
+            if device_id not in [r["device_id"] for r in result]:
+                result.append({"device_id": device_id, "pending_invites_count": 0})
+
+        return success_response(
+            data={"pending_invites_counts": result},
+            message="Pending invites count per device retrieved successfully"
+        )
+
+    except Exception as e:
+        db.session.rollback()
+        return error_response(
+            "Failed to retrieve pending invites counts",
+            500,
+            str(e)
         )
