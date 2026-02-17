@@ -29,6 +29,7 @@ from werkzeug.utils import secure_filename
 import os
 from datetime import datetime, timezone
 import uuid
+from flask_jwt_extended import jwt_required, get_jwt_identity
 
 
 auth_bp = Blueprint("auth", __name__)
@@ -722,9 +723,7 @@ def forgot_password_request():
         return error_response("Failed to process password reset request", 500, str(e))
 
 
-# --------------------------------------------------
-# 2. VERIFY OTP
-# --------------------------------------------------
+
 @auth_bp.route("/forgot-password/verify", methods=["POST"])
 def verify_forgot_password_otp():
     try:
@@ -761,9 +760,6 @@ def verify_forgot_password_otp():
         return error_response("OTP verification failed", 500, str(e))
 
 
-# --------------------------------------------------
-# 3. RESET PASSWORD
-# --------------------------------------------------
 
 
 @auth_bp.route("/forgot-password/reset", methods=["POST"])
@@ -784,3 +780,78 @@ def reset_forgot_password():
     db.session.commit()
 
     return jsonify({"message": "Password updated successfully"}), 200
+
+
+@auth_bp.route("/change-password", methods=["POST"])
+@jwt_required()
+def change_password():
+    try:
+        print("=== Change Password Request ===")
+        print(f"Headers: {dict(request.headers)}")
+        
+        current_user_id = get_jwt_identity()
+        print(f"Current user ID from JWT: {current_user_id}")
+        
+        data = request.get_json()
+        print(f"Request data: {data}")
+        
+        current_password = data.get("current_password")
+        new_password = data.get("new_password")
+        confirm_password = data.get("confirm_password")
+        
+        # Validation
+        if not all([current_password, new_password, confirm_password]):
+            print("Missing fields")
+            return error_response("All fields are required", 400)
+        
+        if new_password != confirm_password:
+            print("Passwords don't match")
+            return error_response("New passwords do not match", 400)
+    
+        if len(new_password) < 8:
+            return error_response("Password must be at least 8 characters long", 400)
+        
+        if not any(char.isdigit() for char in new_password):
+            return error_response("Password must contain at least one number", 400)
+        
+        if not any(char.isupper() for char in new_password):
+            return error_response("Password must contain at least one uppercase letter", 400)
+        
+        if not any(char.islower() for char in new_password):
+            return error_response("Password must contain at least one lowercase letter", 400)
+        
+        special_chars = "!@#$%^&*"
+        if not any(char in special_chars for char in new_password):
+            return error_response(f"Password must contain at least one special character ({special_chars})", 400)
+        
+        guardian = Guardian.query.get(current_user_id)
+        if not guardian:
+            print(f"User not found with ID: {current_user_id}")
+            return error_response("User not found", 404)
+        
+        print(f"Found guardian: {guardian.username}")
+
+        if not guardian.check_password(current_password):
+            print("Current password is incorrect")
+            return error_response("Current password is incorrect", 401)
+        
+        if guardian.check_password(new_password):
+            print("New password same as current")
+            return error_response("New password cannot be the same as current password", 400)
+        
+        guardian.set_password(new_password)
+        guardian.updated_at = datetime.now(timezone.utc)
+        
+        db.session.commit()
+        print("Password updated successfully")
+        
+        return success_response(
+            message="Password changed successfully"
+        )
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error in change_password: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return error_response("Failed to change password", 500, str(e))
