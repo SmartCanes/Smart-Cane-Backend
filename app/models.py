@@ -172,10 +172,10 @@ class DeviceGuardian(db.Model):
             "secondary",
             "guardian",
             name="guardian_role",
-            schema="smart_cane_db"
+            schema="smart_cane_db",
         ),
         default="guardian",
-        nullable=False
+        nullable=False,
     )
     guardian_id = db.Column(
         db.Integer,
@@ -245,3 +245,24 @@ class EmergencyAlert(db.Model):
     )
     triggered_at = db.Column(db.TIMESTAMP, default=lambda: datetime.now(timezone.utc))
     acknowledged = db.Column(db.Boolean, default=False)
+
+class DeviceConfig(db.Model):
+    __tablename__ = "device_config_tbl"
+    __table_args__ = {"schema": "smart_cane_db"}
+
+    config_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    device_id = db.Column(
+        db.Integer,
+        db.ForeignKey("smart_cane_db.device_tbl.device_id"),
+        nullable=False,
+        unique=True
+    )
+
+    config_json = db.Column(db.JSON, nullable=False)
+
+    updated_at = db.Column(
+        db.TIMESTAMP,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
