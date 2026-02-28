@@ -15,6 +15,7 @@ from app.utils.email_service import send_guardian_invite_email
 from app.utils.responses import success_response, error_response
 from app.models import VIP
 from app.utils.serializer import model_to_dict
+from app.utils.history_logger import log_action
 
 device = Blueprint("device", __name__)
 
@@ -153,6 +154,12 @@ def pair_device(guardian):
             is_emergency_contact=True,
         )
 
+        log_action(
+            guardian_id=guardian_id,
+            action="PAIR",
+            description=f"{guardian.first_name} {guardian.last_name} paired device {device_serial}"
+        )
+
         db.session.add(device_guardian)
         db.session.commit()
 
@@ -207,6 +214,13 @@ def unpair_device(guardian, device_id):
             device.paired_at = None
         else:
             device.is_paired = True
+
+        log_action(
+            guardian_id=guardian.guardian_id,
+            action="UNPAIR",
+            description=f"{guardian.first_name} {guardian.last_name} unpaired device ID {device_id}"
+        )
+       
 
         db.session.commit()
 
@@ -322,7 +336,12 @@ def assign_device_to_vip(guardian, device_id):
         db.session.flush() 
 
         device.vip_id = new_vip.vip_id
-     
+
+        log_action(
+            guardian_id=guardian.guardian_id,
+            action="CREATE",
+            description=f"{guardian.first_name} {guardian.last_name} created VIP profile for {new_vip.first_name} {new_vip.last_name}"
+        )
         db.session.commit()
 
         response_data = {
@@ -483,6 +502,13 @@ def invite_guardian_to_device_link(guardian, device_id):
         )
 
         db.session.add(invitation)
+
+        log_action(
+            guardian_id=guardian.guardian_id,
+            action="INVITE",
+            description=f"{guardian.first_name} {guardian.last_name} invited {email} to monitor a device"
+        )
+        
         db.session.commit()
 
         FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
@@ -818,6 +844,13 @@ def remove_guardian_from_device(current_guardian, device_id, guardian_id):
             )
 
         db.session.delete(target_link)
+
+        log_action(
+            guardian_id=current_guardian.guardian_id,
+            action="REMOVE_GUARDIAN",
+            description=f"{current_guardian.first_name} {current_guardian.last_name} removed guardian ID {guardian_id} from device {device_id}"
+        )
+       
         db.session.commit()
 
         return success_response(
@@ -875,6 +908,13 @@ def modify_device_guardian_role(current_guardian, device_id, guardian_id):
             )
 
         target_link.role = new_role
+
+        log_action(
+            guardian_id=current_guardian.guardian_id,
+            action="UPDATE_ROLE",
+            description=f"{current_guardian.first_name} {current_guardian.last_name} changed guardian ID {guardian_id}'s role to {new_role} on device {device_id}"
+        )
+       
         db.session.commit()
 
         return success_response(

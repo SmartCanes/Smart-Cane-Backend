@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import uuid
 
 from app.utils.serializer import model_to_dict
+from app.models import AccountHistory
 
 guardian_bp = Blueprint("guardian", __name__)
 
@@ -334,3 +335,33 @@ def update_guardian(guardian, guardian_id):
     except Exception as e:
         db.session.rollback()
         return error_response("Failed to update guardian", 500, str(e))
+
+
+@guardian_bp.route("/history", methods=["GET"])
+@guardian_required
+def get_account_history(guardian):
+    try:
+        records = (
+            db.session.query(AccountHistory, Guardian)
+            .join(Guardian, Guardian.guardian_id == AccountHistory.guardian_id)
+            .filter(AccountHistory.guardian_id == guardian.guardian_id)
+            .order_by(AccountHistory.created_at.desc())
+            .limit(100)
+            .all()
+        )
+
+        history = [
+            {
+                "history_id": entry.history_id,
+                "guardian_name": f"{g.first_name} {g.last_name}",
+                "action": entry.action,
+                "description": entry.description,
+                "created_at": entry.created_at.isoformat() if entry.created_at else None,
+            }
+            for entry, g in records 
+        ]
+
+        return success_response(data={"history": history}, message="History retrieved successfully")
+
+    except Exception as e:
+        return error_response("Failed to retrieve history", 500, str(e))

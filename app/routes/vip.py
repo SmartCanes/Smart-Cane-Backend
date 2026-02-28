@@ -8,6 +8,7 @@ from werkzeug.utils import secure_filename
 import os
 import uuid
 from app.utils.serializer import model_to_dict
+from app.utils.history_logger import log_action
 
 vip_bp = Blueprint("vip", __name__)
 
@@ -84,6 +85,8 @@ def upload_vip_image(guardian, vip_id):
         vip.vip_image_url = relative_path
         vip.updated_at = datetime.now(timezone.utc)
 
+        
+
         db.session.commit()
 
         # Build accessible URL
@@ -152,6 +155,12 @@ def update_vip(guardian, device_id):
 
         vip.updated_at = datetime.now(timezone.utc)
 
+        log_action(
+            guardian_id=guardian.guardian_id,
+            action="UPDATE",
+            description=f"{guardian.first_name} {guardian.last_name} updated VIP profile for {vip.first_name} {vip.last_name}"
+        )
+
         db.session.commit()
 
         response_data = {
@@ -205,6 +214,12 @@ def delete_vip(guardian, device_id):
                     os.remove(old_image_path)
                 except Exception:
                     pass
+
+        log_action(
+            guardian_id=guardian.guardian_id,
+            action="DELETE",
+            description=f"{guardian.first_name} {guardian.last_name} removed VIP profile for {vip.first_name} {vip.last_name}"
+        )
 
         db.session.delete(vip)
         db.session.commit()
