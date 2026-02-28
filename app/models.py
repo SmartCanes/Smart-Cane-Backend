@@ -245,3 +245,20 @@ class EmergencyAlert(db.Model):
     )
     triggered_at = db.Column(db.TIMESTAMP, default=lambda: datetime.now(timezone.utc))
     acknowledged = db.Column(db.Boolean, default=False)
+
+class AccountHistory(db.Model):
+    __tablename__ = "account_history_tbl"
+    __table_args__ = {"schema": "smart_cane_db"}
+
+    history_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    guardian_id = db.Column(
+        db.Integer,
+        db.ForeignKey("smart_cane_db.guardian_tbl.guardian_id"),
+        nullable=False,
+    )
+    action = db.Column(db.String(50), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.TIMESTAMP, default=lambda: datetime.now(timezone.utc))
+
+    def __repr__(self):
+        return f"<AccountHistory {self.guardian_id} - {self.action}>"
