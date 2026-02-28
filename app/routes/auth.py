@@ -708,12 +708,12 @@ def forgot_password_request():
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
 
         # Save OTP to database
-        otp = OTP(email=email, otp_code=otp_code, expires_at=expires_at)
+        otp = OTP(email=email, otp_code=otp_code, expires_at=expires_at, purpose="password_reset")
 
         db.session.add(otp)
         db.session.commit()
 
-        send_password_reset_email(email, otp_code, user.guardian_name)
+        send_password_reset_email(email, otp_code, user.first_name)
 
         return success_response(message="OTP sent to email", status_code=200)
 
