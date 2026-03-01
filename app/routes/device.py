@@ -157,7 +157,8 @@ def pair_device(guardian):
         log_action(
             guardian_id=guardian_id,
             action="PAIR",
-            description=f"{guardian.first_name} {guardian.last_name} paired device {device_serial}"
+            description=f"{guardian.first_name} {guardian.last_name} paired device {device_serial}",
+            device_id=device.device_id 
         )
 
         db.session.add(device_guardian)
@@ -218,7 +219,8 @@ def unpair_device(guardian, device_id):
         log_action(
             guardian_id=guardian.guardian_id,
             action="UNPAIR",
-            description=f"{guardian.first_name} {guardian.last_name} unpaired device ID {device_id}"
+            description=f"{guardian.first_name} {guardian.last_name} unpaired device ID {device_id}",
+            device_id=device_id 
         )
        
 
@@ -330,6 +332,13 @@ def assign_device_to_vip(guardian, device_id):
             street_address=vip_data.get("street_address", ""),
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
+        )
+
+        log_action(
+            guardian_id=guardian.guardian_id,
+            action="CREATE",
+            description=f"{guardian.first_name} {guardian.last_name} created VIP profile for {new_vip.first_name} {new_vip.last_name}",
+            device_id=device_id             
         )
 
         db.session.add(new_vip)
@@ -506,7 +515,8 @@ def invite_guardian_to_device_link(guardian, device_id):
         log_action(
             guardian_id=guardian.guardian_id,
             action="INVITE",
-            description=f"{guardian.first_name} {guardian.last_name} invited {email} to monitor a device"
+            description=f"{guardian.first_name} {guardian.last_name} invited {email} to monitor a device",
+            device_id=device_id
         )
         
         db.session.commit()
@@ -613,6 +623,13 @@ def accept_guardian_invite(token):
 
             invitation.status = "accepted"
             invitation.accepted_at = datetime.now(timezone.utc)
+
+            log_action(
+                guardian_id=guardian_to_link.guardian_id,
+                action="ACCEPT_INVITE",
+                description=f"{guardian_to_link.first_name} {guardian_to_link.last_name} accepted the invitation to monitor device {invitation.device_id}",
+                device_id=invitation.device_id
+            )
             db.session.commit()
 
             return success_response(
@@ -645,6 +662,13 @@ def accept_guardian_invite(token):
 
             invitation.status = "accepted"
             invitation.accepted_at = datetime.now(timezone.utc)
+
+            log_action(
+                guardian_id=existing_guardian.guardian_id,
+                action="ACCEPT_INVITE",
+                description=f"{existing_guardian.first_name} {existing_guardian.last_name} accepted the invitation to monitor device {invitation.device_id}",
+                device_id=invitation.device_id
+            )
             db.session.commit()
 
             return success_response(
@@ -848,7 +872,8 @@ def remove_guardian_from_device(current_guardian, device_id, guardian_id):
         log_action(
             guardian_id=current_guardian.guardian_id,
             action="REMOVE_GUARDIAN",
-            description=f"{current_guardian.first_name} {current_guardian.last_name} removed guardian ID {guardian_id} from device {device_id}"
+            description=f"{current_guardian.first_name} {current_guardian.last_name} removed guardian ID {guardian_id} from device {device_id}",
+            device_id=device_id
         )
        
         db.session.commit()
@@ -912,7 +937,8 @@ def modify_device_guardian_role(current_guardian, device_id, guardian_id):
         log_action(
             guardian_id=current_guardian.guardian_id,
             action="UPDATE_ROLE",
-            description=f"{current_guardian.first_name} {current_guardian.last_name} changed guardian ID {guardian_id}'s role to {new_role} on device {device_id}"
+            description=f"{current_guardian.first_name} {current_guardian.last_name} changed guardian ID {guardian_id}'s role to {new_role} on device {device_id}",
+            device_id=device_id
         )
        
         db.session.commit()

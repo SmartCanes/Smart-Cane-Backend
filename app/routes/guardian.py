@@ -8,6 +8,7 @@ from werkzeug.utils import secure_filename
 import os
 from datetime import datetime, timezone
 import uuid
+from app.models import DeviceGuardian  
 
 from app.utils.serializer import model_to_dict
 from app.models import AccountHistory
@@ -341,10 +342,24 @@ def update_guardian(guardian, guardian_id):
 @guardian_required
 def get_account_history(guardian):
     try:
+        # Get all device IDs this guardian is linked to
+        my_device_ids = [
+            dg.device_id for dg in DeviceGuardian.query.filter_by(
+                guardian_id=guardian.guardian_id
+            ).all()
+        ]
+
+        if not my_device_ids:
+            return success_response(
+                data={"history": []},
+                message="History retrieved successfully"
+            )
+
+        # Get history for all actions on those devices
         records = (
             db.session.query(AccountHistory, Guardian)
             .join(Guardian, Guardian.guardian_id == AccountHistory.guardian_id)
-            .filter(AccountHistory.guardian_id == guardian.guardian_id)
+            .filter(AccountHistory.device_id.in_(my_device_ids))
             .order_by(AccountHistory.created_at.desc())
             .limit(100)
             .all()
@@ -356,12 +371,16 @@ def get_account_history(guardian):
                 "guardian_name": f"{g.first_name} {g.last_name}",
                 "action": entry.action,
                 "description": entry.description,
+                "device_id": entry.device_id,
                 "created_at": entry.created_at.isoformat() if entry.created_at else None,
             }
-            for entry, g in records 
+            for entry, g in records
         ]
 
-        return success_response(data={"history": history}, message="History retrieved successfully")
+        return success_response(
+            data={"history": history},
+            message="History retrieved successfully"
+        )
 
     except Exception as e:
         return error_response("Failed to retrieve history", 500, str(e))
