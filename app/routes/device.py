@@ -158,7 +158,7 @@ def pair_device(guardian):
             guardian_id=guardian_id,
             action="PAIR",
             description=f"{guardian.first_name} {guardian.last_name} paired device {device_serial}",
-            device_id=device.device_id 
+            device_id=device.device_id,
         )
 
         db.session.add(device_guardian)
@@ -219,10 +219,9 @@ def unpair_device(guardian, device_id):
         log_action(
             guardian_id=guardian.guardian_id,
             action="UNPAIR",
-            description=f"{guardian.first_name} {guardian.last_name} unpaired device ID {device_id}",
-            device_id=device_id 
+            description=f"{guardian.first_name} {guardian.last_name} unpaired device with serial {device.device_serial_number}",
+            device_id=device_id,
         )
-       
 
         db.session.commit()
 
@@ -338,19 +337,14 @@ def assign_device_to_vip(guardian, device_id):
             guardian_id=guardian.guardian_id,
             action="CREATE",
             description=f"{guardian.first_name} {guardian.last_name} created VIP profile for {new_vip.first_name} {new_vip.last_name}",
-            device_id=device_id             
+            device_id=device_id,
         )
 
         db.session.add(new_vip)
-        db.session.flush() 
+        db.session.flush()
 
         device.vip_id = new_vip.vip_id
 
-        log_action(
-            guardian_id=guardian.guardian_id,
-            action="CREATE",
-            description=f"{guardian.first_name} {guardian.last_name} created VIP profile for {new_vip.first_name} {new_vip.last_name}"
-        )
         db.session.commit()
 
         response_data = {
@@ -516,9 +510,9 @@ def invite_guardian_to_device_link(guardian, device_id):
             guardian_id=guardian.guardian_id,
             action="INVITE",
             description=f"{guardian.first_name} {guardian.last_name} invited {email} to monitor a device",
-            device_id=device_id
+            device_id=device_id,
         )
-        
+
         db.session.commit()
 
         FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
@@ -628,7 +622,7 @@ def accept_guardian_invite(token):
                 guardian_id=guardian_to_link.guardian_id,
                 action="ACCEPT_INVITE",
                 description=f"{guardian_to_link.first_name} {guardian_to_link.last_name} accepted the invitation to monitor device {invitation.device_id}",
-                device_id=invitation.device_id
+                device_id=invitation.device_id,
             )
             db.session.commit()
 
@@ -667,7 +661,7 @@ def accept_guardian_invite(token):
                 guardian_id=existing_guardian.guardian_id,
                 action="ACCEPT_INVITE",
                 description=f"{existing_guardian.first_name} {existing_guardian.last_name} accepted the invitation to monitor device {invitation.device_id}",
-                device_id=invitation.device_id
+                device_id=invitation.device_id,
             )
             db.session.commit()
 
@@ -873,9 +867,9 @@ def remove_guardian_from_device(current_guardian, device_id, guardian_id):
             guardian_id=current_guardian.guardian_id,
             action="REMOVE_GUARDIAN",
             description=f"{current_guardian.first_name} {current_guardian.last_name} removed guardian ID {guardian_id} from device {device_id}",
-            device_id=device_id
+            device_id=device_id,
         )
-       
+
         db.session.commit()
 
         return success_response(
@@ -938,9 +932,9 @@ def modify_device_guardian_role(current_guardian, device_id, guardian_id):
             guardian_id=current_guardian.guardian_id,
             action="UPDATE_ROLE",
             description=f"{current_guardian.first_name} {current_guardian.last_name} changed guardian ID {guardian_id}'s role to {new_role} on device {device_id}",
-            device_id=device_id
+            device_id=device_id,
         )
-       
+
         db.session.commit()
 
         return success_response(
@@ -1096,6 +1090,7 @@ def toggle_emergency_guardian(current_guardian, device_id, guardian_id):
             str(e),
         )
 
+
 @device.route("/pending-invites", methods=["GET"])
 @guardian_required
 def get_pending_invites_counts(guardian):
@@ -1108,17 +1103,17 @@ def get_pending_invites_counts(guardian):
         if not device_ids:
             return success_response(
                 data={"pending_invites_counts": []},
-                message="No devices linked to this guardian"
+                message="No devices linked to this guardian",
             )
 
         pending_counts = (
             db.session.query(
                 GuardianInvitation.device_id,
-                func.count(GuardianInvitation.id).label("pending_count")
+                func.count(GuardianInvitation.id).label("pending_count"),
             )
             .filter(
                 GuardianInvitation.device_id.in_(device_ids),
-                GuardianInvitation.status == "pending"
+                GuardianInvitation.status == "pending",
             )
             .group_by(GuardianInvitation.device_id)
             .all()
@@ -1135,13 +1130,9 @@ def get_pending_invites_counts(guardian):
 
         return success_response(
             data={"pending_invites_counts": result},
-            message="Pending invites count per device retrieved successfully"
+            message="Pending invites count per device retrieved successfully",
         )
 
     except Exception as e:
         db.session.rollback()
-        return error_response(
-            "Failed to retrieve pending invites counts",
-            500,
-            str(e)
-        )
+        return error_response("Failed to retrieve pending invites counts", 500, str(e))
