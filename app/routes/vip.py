@@ -158,7 +158,8 @@ def update_vip(guardian, device_id):
         log_action(
             guardian_id=guardian.guardian_id,
             action="UPDATE",
-            description=f"{guardian.first_name} {guardian.last_name} updated VIP profile for {vip.first_name} {vip.last_name}"
+            description=f"{guardian.first_name} {guardian.last_name} updated VIP profile for {vip.first_name} {vip.last_name}",
+            device_id=device_id
         )
 
         db.session.commit()
@@ -218,7 +219,8 @@ def delete_vip(guardian, device_id):
         log_action(
             guardian_id=guardian.guardian_id,
             action="DELETE",
-            description=f"{guardian.first_name} {guardian.last_name} removed VIP profile for {vip.first_name} {vip.last_name}"
+            description=f"{guardian.first_name} {guardian.last_name} removed VIP profile for {vip.first_name} {vip.last_name}",
+            device_id=device_id
         )
 
         db.session.delete(vip)

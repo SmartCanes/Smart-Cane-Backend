@@ -276,6 +276,11 @@ class AccountHistory(db.Model):
         db.ForeignKey("smart_cane_db.guardian_tbl.guardian_id"),
         nullable=False,
     )
+    device_id = db.Column(                                          # NEW
+        db.Integer,
+        db.ForeignKey("smart_cane_db.device_tbl.device_id"),
+        nullable=True,
+    )
     action = db.Column(db.String(50), nullable=False)
     description = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.TIMESTAMP, default=lambda: datetime.now(timezone.utc))
