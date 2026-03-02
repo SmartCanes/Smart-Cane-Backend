@@ -866,7 +866,7 @@ def remove_guardian_from_device(current_guardian, device_id, guardian_id):
         log_action(
             guardian_id=current_guardian.guardian_id,
             action="REMOVE_GUARDIAN",
-            description=f"{current_guardian.first_name} {current_guardian.last_name} removed guardian ID {guardian_id} from device {device_id}",
+            description=f"{current_guardian.first_name} {current_guardian.last_name} removed {target_link.guardian.first_name} {target_link.guardian.last_name} from device {device_id}",
             device_id=device_id,
         )
 
@@ -931,7 +931,7 @@ def modify_device_guardian_role(current_guardian, device_id, guardian_id):
         log_action(
             guardian_id=current_guardian.guardian_id,
             action="UPDATE_ROLE",
-            description=f"{current_guardian.first_name} {current_guardian.last_name} changed guardian ID {guardian_id}'s role to {new_role} on device {device_id}",
+            description=f"{current_guardian.first_name} {current_guardian.last_name} changed {target_link.guardian.first_name} {target_link.guardian.last_name}'s role to {new_role} on device {target_link.device.device_serial_number}",
             device_id=device_id,
         )
 
@@ -1000,6 +1000,24 @@ def update_guardian_relationship(guardian, device_id, guardian_id):
                 )
 
         target_link.relationship = new_relationship.strip()
+ 
+
+        if guardian.guardian_id == target_link.guardian_id:
+            description = (
+            f"{guardian.first_name} {guardian.last_name} updated their relationship to the VIP to {new_relationship} for device {target_link.device.device_serial_number}"
+        )
+        else:
+            description = (
+                f"{guardian.first_name} {guardian.last_name} updated the relationship of "
+                f"{target_link.guardian.first_name} {target_link.guardian.last_name} to {new_relationship} for device {target_link.device.device_serial_number}"
+            )   
+       
+        log_action(
+            guardian_id=guardian.guardian_id,
+            action="UPDATE_RELATIONSHIP",
+            description=description,
+            device_id=device_id,
+        )
         db.session.commit()
 
         return success_response(
@@ -1070,6 +1088,27 @@ def toggle_emergency_guardian(current_guardian, device_id, guardian_id):
         ).update({"is_emergency_contact": False})
 
         target_link.is_emergency_contact = True
+
+        if current_guardian.guardian_id == target_link.guardian_id:
+            description = (
+            f"{current_guardian.first_name} {current_guardian.last_name} set themselves as emergency contact "
+            f"for device {target_link.device.device_serial_number}"
+            )
+            
+        else:
+            description = (
+                f"{current_guardian.first_name} {current_guardian.last_name} set guardian "
+                f"{target_link.guardian.first_name} {target_link.guardian.last_name} as emergency contact "
+                f"for device {target_link.device.device_serial_number}"
+            )
+
+        log_action(
+            guardian_id=current_guardian.guardian_id,
+            action="SET_EMERGENCY",
+            description=description,
+            device_id=device_id,
+        )
+        
         db.session.commit()
 
         return success_response(
