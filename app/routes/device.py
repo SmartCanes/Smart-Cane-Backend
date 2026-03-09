@@ -110,12 +110,22 @@ def validate_device_serial():
             data={"valid": False, "reason": "not_found"},
             message="Device serial is invalid",
         )
+    vip = VIP.query.get(device.vip_id) if device.vip_id else None
 
-    if device.is_paired:
+    device_guardian = DeviceGuardian.query.filter_by(device_id=device.device_id, is_emergency_contact=True).first()
+
+    if device.is_paired and not vip:
         return success_response(
             data={"valid": False, "reason": "already_paired"},
             message="Device is already paired to another guardian",
         )
+    
+    if device.is_paired and vip:
+        return success_response(
+            data={"valid": False, "reason": "already_paired_with_vip", "vip": model_to_dict(vip), "guardian": model_to_dict(device_guardian.guardian)},
+            message="Device is already paired to another guardian and has assigned to a VIP",
+        )
+        
 
     return success_response(
         data={"valid": True, "reason": "ok", "device_serial_number": serial},
