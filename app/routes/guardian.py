@@ -117,6 +117,8 @@ def upload_profile_image(guardian):
 @guardian_required
 def get_profile(guardian):
     try:
+        from app.routes.auth import _is_new_user
+
         profile_data = {
             "guardian_id": guardian.guardian_id,
             "username": guardian.username,
@@ -136,12 +138,32 @@ def get_profile(guardian):
             "updated_at": (
                 guardian.updated_at.isoformat() if guardian.updated_at else None
             ),
+            "is_new_user": _is_new_user(guardian),
+            "has_seen_tour": bool(guardian.has_seen_tour),
+            "date_joined": (
+                guardian.created_at.isoformat() if guardian.created_at else None
+            ),
         }
 
         return success_response(data=profile_data)
 
     except Exception as e:
         return error_response("Failed to fetch profile", 500, str(e))
+
+
+@guardian_bp.route("/tour-complete", methods=["PATCH"])
+@guardian_required
+def mark_tour_complete(guardian):
+    """Mark that the guardian has completed (or dismissed) the onboarding tour.
+    Sets has_seen_tour = True so the tour is never shown again on any device.
+    """
+    try:
+        guardian.has_seen_tour = True
+        db.session.commit()
+        return success_response(data={"has_seen_tour": True}, message="Tour marked as complete")
+    except Exception as e:
+        db.session.rollback()
+        return error_response("Failed to update tour status", 500, str(e))
 
 
 @guardian_bp.route("/profile", methods=["PUT"])

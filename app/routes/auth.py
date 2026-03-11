@@ -50,6 +50,23 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 auth_bp = Blueprint("auth", __name__)
 
 
+NEW_USER_THRESHOLD_DAYS = 7
+
+
+def _is_new_user(guardian):
+    """Return True if the guardian account was created within NEW_USER_THRESHOLD_DAYS.
+
+    Uses only the existing `created_at` column — no schema changes required.
+    """
+    if not guardian.created_at:
+        return False
+    created = guardian.created_at
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+    age = datetime.now(timezone.utc) - created
+    return age.days < NEW_USER_THRESHOLD_DAYS
+
+
 # correct
 def generate_otp(length=6):
     """Generate a random numeric OTP"""
@@ -494,7 +511,17 @@ def login():
         )
 
         response_body, status_code = success_response(
-            data={**user_data, "device_registered": device_registered},  # type: ignore
+            data={
+                **user_data,
+                "device_registered": device_registered,
+                "is_new_user": _is_new_user(guardian),
+                "has_seen_tour": bool(guardian.has_seen_tour),
+                "date_joined": (
+                    guardian.created_at.isoformat()
+                    if guardian.created_at
+                    else None
+                ),
+            },
             message="Login successful",
         )
 
@@ -621,6 +648,13 @@ def verify_token(guardian):
                     "expires_at": expiry_time,
                     "issued_at": jwt_data.get("iat"),
                     "token_type": jwt_data.get("type", "access"),
+                    "is_new_user": _is_new_user(guardian),
+                    "has_seen_tour": bool(guardian.has_seen_tour),
+                    "date_joined": (
+                        guardian.created_at.isoformat()
+                        if guardian.created_at
+                        else None
+                    ),
                 },
                 message="Token is valid",
             )
