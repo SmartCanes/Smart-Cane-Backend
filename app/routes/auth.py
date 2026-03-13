@@ -479,6 +479,10 @@ def login():
         ).delete()
         db.session.commit()
 
+        # Ensure payload reads the latest DB state (including has_seen_tour)
+        # in case the flag was updated from another session/device recently.
+        db.session.refresh(guardian)
+
         guardian_device = DeviceGuardian.query.filter_by(
             guardian_id=guardian.guardian_id
         ).first()
@@ -516,6 +520,7 @@ def login():
                 "device_registered": device_registered,
                 "is_new_user": _is_new_user(guardian),
                 "has_seen_tour": bool(guardian.has_seen_tour),
+                "visited_tour_pages": guardian.visited_tour_pages or [],
                 "date_joined": (
                     guardian.created_at.isoformat()
                     if guardian.created_at
@@ -650,6 +655,7 @@ def verify_token(guardian):
                     "token_type": jwt_data.get("type", "access"),
                     "is_new_user": _is_new_user(guardian),
                     "has_seen_tour": bool(guardian.has_seen_tour),
+                    "visited_tour_pages": guardian.visited_tour_pages or [],
                     "date_joined": (
                         guardian.created_at.isoformat()
                         if guardian.created_at

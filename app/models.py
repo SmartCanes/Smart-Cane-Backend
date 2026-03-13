@@ -115,6 +115,7 @@ class Guardian(db.Model):
     street_address = db.Column(db.Text)
     role = db.Column(db.String(50), default="guardian")
     has_seen_tour = db.Column(db.Boolean, default=False, nullable=False)
+    visited_tour_pages = db.Column(db.JSON, default=list, nullable=False)
     created_at = db.Column(db.TIMESTAMP, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(
         db.TIMESTAMP,

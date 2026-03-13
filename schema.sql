@@ -64,6 +64,7 @@ CREATE TABLE guardian_tbl (
 
     role VARCHAR(50) DEFAULT 'guardian',
     has_seen_tour TINYINT(1) DEFAULT 0,
+    visited_tour_pages JSON,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;

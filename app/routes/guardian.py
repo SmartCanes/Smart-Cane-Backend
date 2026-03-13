@@ -140,6 +140,7 @@ def get_profile(guardian):
             ),
             "is_new_user": _is_new_user(guardian),
             "has_seen_tour": bool(guardian.has_seen_tour),
+            "visited_tour_pages": guardian.visited_tour_pages or [],
             "date_joined": (
                 guardian.created_at.isoformat() if guardian.created_at else None
             ),
@@ -158,12 +159,67 @@ def mark_tour_complete(guardian):
     Sets has_seen_tour = True so the tour is never shown again on any device.
     """
     try:
-        guardian.has_seen_tour = True
+        if guardian.has_seen_tour:
+            return success_response(
+                data={"has_seen_tour": True},
+                message="Tour already marked as complete",
+            )
+
+        rows_updated = (
+            Guardian.query.filter_by(guardian_id=guardian.guardian_id)
+            .update(
+                {
+                    Guardian.has_seen_tour: True,
+                    Guardian.updated_at: datetime.now(timezone.utc),
+                },
+                synchronize_session=False,
+            )
+        )
+
+        if rows_updated != 1:
+            db.session.rollback()
+            return error_response("Failed to update tour status", 500)
+
         db.session.commit()
-        return success_response(data={"has_seen_tour": True}, message="Tour marked as complete")
+        db.session.refresh(guardian)
+
+        return success_response(
+            data={"has_seen_tour": bool(guardian.has_seen_tour)},
+            message="Tour marked as complete",
+        )
     except Exception as e:
         db.session.rollback()
         return error_response("Failed to update tour status", 500, str(e))
+
+
+@guardian_bp.route("/tour-progress", methods=["PATCH"])
+@guardian_required
+def mark_tour_progress(guardian):
+    """Persist one completed tour page path for the current guardian."""
+    try:
+        data = request.get_json(silent=True) or {}
+        path = data.get("path")
+
+        if not isinstance(path, str) or not path.startswith("/"):
+            return error_response("Valid tour path is required", 400)
+
+        visited = guardian.visited_tour_pages or []
+        if not isinstance(visited, list):
+            visited = []
+
+        if path not in visited:
+            guardian.visited_tour_pages = [*visited, path]
+            guardian.updated_at = datetime.now(timezone.utc)
+            db.session.commit()
+            db.session.refresh(guardian)
+
+        return success_response(
+            data={"visited_tour_pages": guardian.visited_tour_pages or []},
+            message="Tour progress updated",
+        )
+    except Exception as e:
+        db.session.rollback()
+        return error_response("Failed to update tour progress", 500, str(e))
 
 
 @guardian_bp.route("/profile", methods=["PUT"])
