@@ -149,9 +149,14 @@ def update_vip(guardian, device_id):
             "street_address",
         ]
 
+        name_fields = {"first_name", "middle_name", "last_name"}
+
         for field in updatable_fields:
             if field in vip_data:
-                setattr(vip, field, vip_data[field])
+                value = vip_data[field]
+                if field in name_fields and isinstance(value, str):
+                    value = value.title()
+                setattr(vip, field, value)
 
         vip.updated_at = datetime.now(timezone.utc)
 

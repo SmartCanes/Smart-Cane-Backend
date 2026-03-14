@@ -112,20 +112,26 @@ def validate_device_serial():
         )
     vip = VIP.query.get(device.vip_id) if device.vip_id else None
 
-    device_guardian = DeviceGuardian.query.filter_by(device_id=device.device_id, is_emergency_contact=True).first()
+    device_guardian = DeviceGuardian.query.filter_by(
+        device_id=device.device_id, is_emergency_contact=True
+    ).first()
 
     if device.is_paired and not vip:
         return success_response(
             data={"valid": False, "reason": "already_paired"},
             message="Device is already paired to another guardian",
         )
-    
+
     if device.is_paired and vip:
         return success_response(
-            data={"valid": False, "reason": "already_paired_with_vip", "vip": model_to_dict(vip), "guardian": model_to_dict(device_guardian.guardian)},
+            data={
+                "valid": False,
+                "reason": "already_paired_with_vip",
+                "vip": model_to_dict(vip),
+                "guardian": model_to_dict(device_guardian.guardian),
+            },
             message="Device is already paired to another guardian and has assigned to a VIP",
         )
-        
 
     return success_response(
         data={"valid": True, "reason": "ok", "device_serial_number": serial},
@@ -330,10 +336,13 @@ def assign_device_to_vip(guardian, device_id):
             if not vip_data.get(field):
                 return error_response(f"Missing required VIP field: {field}", 400)
 
+        def _title(val):
+            return val.title() if isinstance(val, str) else val
+
         new_vip = VIP(
-            first_name=vip_data.get("first_name"),
-            middle_name=vip_data.get("middle_name"),
-            last_name=vip_data.get("last_name"),
+            first_name=_title(vip_data.get("first_name")),
+            middle_name=_title(vip_data.get("middle_name")),
+            last_name=_title(vip_data.get("last_name")),
             vip_image_url=vip_data.get("vip_image_url", ""),
             province=vip_data.get("province"),
             city=vip_data.get("city"),
@@ -789,9 +798,9 @@ def get_all_device_guardians(guardian):
                 {
                     "guardian_id": g.guardian_id,
                     "username": g.username,
-                    "first_name": g.first_name,
-                    "middle_name": g.middle_name,
-                    "last_name": g.last_name,
+                    "first_name": _title(g.first_name),
+                    "middle_name": _title(g.middle_name),
+                    "last_name": _title(g.last_name),
                     "email": g.email,
                     "contact_number": g.contact_number,
                     "role": dg.role,
@@ -1010,18 +1019,15 @@ def update_guardian_relationship(guardian, device_id, guardian_id):
                 )
 
         target_link.relationship = new_relationship.strip()
- 
 
         if guardian.guardian_id == target_link.guardian_id:
-            description = (
-            f"{guardian.first_name} {guardian.last_name} updated their relationship to the VIP to {new_relationship} for device {target_link.device.device_serial_number}"
-        )
+            description = f"{guardian.first_name} {guardian.last_name} updated their relationship to the VIP to {new_relationship} for device {target_link.device.device_serial_number}"
         else:
             description = (
                 f"{guardian.first_name} {guardian.last_name} updated the relationship of "
                 f"{target_link.guardian.first_name} {target_link.guardian.last_name} to {new_relationship} for device {target_link.device.device_serial_number}"
-            )   
-       
+            )
+
         log_action(
             guardian_id=guardian.guardian_id,
             action="UPDATE_RELATIONSHIP",
@@ -1101,10 +1107,10 @@ def toggle_emergency_guardian(current_guardian, device_id, guardian_id):
 
         if current_guardian.guardian_id == target_link.guardian_id:
             description = (
-            f"{current_guardian.first_name} {current_guardian.last_name} set themselves as emergency contact "
-            f"for device {target_link.device.device_serial_number}"
+                f"{current_guardian.first_name} {current_guardian.last_name} set themselves as emergency contact "
+                f"for device {target_link.device.device_serial_number}"
             )
-            
+
         else:
             description = (
                 f"{current_guardian.first_name} {current_guardian.last_name} set guardian "
@@ -1118,7 +1124,7 @@ def toggle_emergency_guardian(current_guardian, device_id, guardian_id):
             description=description,
             device_id=device_id,
         )
-        
+
         db.session.commit()
 
         return success_response(

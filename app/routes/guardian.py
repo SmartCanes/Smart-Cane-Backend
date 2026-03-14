@@ -8,7 +8,7 @@ from werkzeug.utils import secure_filename
 import os
 from datetime import datetime, timezone
 import uuid
-from app.models import DeviceGuardian  
+from app.models import DeviceGuardian
 
 from app.utils.serializer import model_to_dict
 from app.models import AccountHistory
@@ -160,7 +160,9 @@ def mark_tour_complete(guardian):
     try:
         guardian.has_seen_tour = True
         db.session.commit()
-        return success_response(data={"has_seen_tour": True}, message="Tour marked as complete")
+        return success_response(
+            data={"has_seen_tour": True}, message="Tour marked as complete"
+        )
     except Exception as e:
         db.session.rollback()
         return error_response("Failed to update tour status", 500, str(e))
@@ -203,11 +205,15 @@ def update_my_profile(guardian):
 
         nullable_fields = ["middle_name", "guardian_image_url"]
 
+        name_fields = {"first_name", "middle_name", "last_name"}
+
         for field in allowed_fields:
             if field in data:
                 value = data[field]
                 if field in nullable_fields and value == "":
                     value = None
+                if field in name_fields and isinstance(value, str):
+                    value = value.title()
                 setattr(guardian, field, value)
 
             # Update password if provided
@@ -406,7 +412,7 @@ def get_account_history(guardian):
                 "guardian_name": f"{g.first_name} {g.last_name}",
                 "action": entry.action,
                 "description": entry.description,
-                "device_id": entry.device_id, 
+                "device_id": entry.device_id,
                 "created_at": (
                     entry.created_at.isoformat() if entry.created_at else None
                 ),
