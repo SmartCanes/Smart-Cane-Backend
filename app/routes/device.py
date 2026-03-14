@@ -798,9 +798,9 @@ def get_all_device_guardians(guardian):
                 {
                     "guardian_id": g.guardian_id,
                     "username": g.username,
-                    "first_name": _title(g.first_name),
-                    "middle_name": _title(g.middle_name),
-                    "last_name": _title(g.last_name),
+                    "first_name": g.first_name,
+                    "middle_name": g.middle_name,
+                    "last_name": g.last_name,
                     "email": g.email,
                     "contact_number": g.contact_number,
                     "role": dg.role,
