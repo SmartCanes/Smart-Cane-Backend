@@ -83,8 +83,15 @@ def check_otp_rate_limit(email, purpose="general"):
         OTP.email == email, OTP.purpose == purpose, OTP.created_at >= one_hour_ago
     ).count()
 
+    recent_unused_otps = OTP.query.filter(
+        OTP.email == email,
+        OTP.purpose == purpose,
+        OTP.created_at >= one_hour_ago,
+        OTP.is_used.is_(False),
+    ).count()
+
     # Limit to 3 OTP requests per hour
-    return recent_otps < 3
+    return recent_unused_otps < 4
 
 
 @auth_bp.route("/send-otp", methods=["POST"])
