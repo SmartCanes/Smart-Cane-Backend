@@ -8,7 +8,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from sqlalchemy import func
 
 from app import db
-from app.models import Device, DeviceGuardian, Guardian, GuardianInvitation
+from app.models import Device, DeviceGuardian, Guardian, GuardianInvitation, DeviceLog
 from app.routes import guardian
 from app.utils.auth import guardian_required
 from app.utils.email_service import send_guardian_invite_email
@@ -1191,3 +1191,62 @@ def get_pending_invites_counts(guardian):
     except Exception as e:
         db.session.rollback()
         return error_response("Failed to retrieve pending invites counts", 500, str(e))
+
+
+@device.route("/logs/<string:device_serial>", methods=["GET"])
+@guardian_required
+def get_device_logs_by_serial(guardian, device_serial):
+    try:
+        if not device_serial:
+            return error_response("device_serial is required", 400)
+
+        device = Device.query.filter_by(device_serial_number=device_serial).first()
+        if not device:
+            return error_response("Device not found", 404)
+
+        requester_link = DeviceGuardian.query.filter_by(
+            device_id=device.device_id,
+            guardian_id=guardian.guardian_id,
+        ).first()
+
+        if not requester_link:
+            return error_response(
+                "You are not authorized to view logs for this device",
+                403,
+            )
+
+        limit = request.args.get("limit", default=50, type=int)
+        if limit is None or limit < 1:
+            return error_response("limit must be a positive integer", 400)
+        limit = min(limit, 200)
+
+        logs = (
+            DeviceLog.query.filter_by(device_id=device.device_id)
+            .order_by(DeviceLog.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+
+        data = [
+            {
+                "log_id": log.log_id,
+                "device_id": log.device_id,
+                "device_serial_number": device.device_serial_number,
+                "guardian_id": log.guardian_id,
+                "activity_type": log.activity_type,
+                "status": log.status,
+                "message": log.message,
+                "metadata_json": log.metadata_json,
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+            }
+            for log in logs
+        ]
+
+        return success_response(
+            data={"device_serial_number": device.device_serial_number, "logs": data},
+            message="Device logs retrieved successfully",
+        )
+
+    except Exception as e:
+        db.session.rollback()
+        return error_response("Failed to retrieve device logs", 500, str(e))
