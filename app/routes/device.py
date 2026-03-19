@@ -1193,7 +1193,7 @@ def get_pending_invites_counts(guardian):
         return error_response("Failed to retrieve pending invites counts", 500, str(e))
 
 
-@device.route("/logs/<string:device_serial>", methods=["GET"])
+@device.route("/log/<string:device_serial>", methods=["GET"])
 @guardian_required
 def get_device_logs_by_serial(guardian, device_serial):
     try:
