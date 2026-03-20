@@ -90,9 +90,9 @@ class VIP(db.Model):
 
     # Relationships
     devices = db.relationship("Device", backref="vip", lazy=True)
-    locations = db.relationship("GPSLocation", backref="vip", lazy=True)
+    # locations = db.relationship("GPSLocation", backref="vip", lazy=True)
     reminders = db.relationship("NoteReminder", backref="vip", lazy=True)
-    alerts = db.relationship("EmergencyAlert", backref="vip", lazy=True)
+    # alerts = db.relationship("EmergencyAlert", backref="vip", lazy=True)
 
 
 class Guardian(db.Model):
@@ -124,6 +124,12 @@ class Guardian(db.Model):
 
     device_links = db.relationship("DeviceGuardian", backref="guardian", lazy=True)
     reminders = db.relationship("NoteReminder", backref="guardian", lazy=True)
+    push_subscriptions = db.relationship(
+        "PushSubscription",
+        back_populates="guardian",
+        lazy=True,
+        cascade="all, delete-orphan",
+    )
 
     def set_password(self, password):
         self.password = bcrypt.hashpw(
@@ -191,20 +197,54 @@ class DeviceGuardian(db.Model):
     )
 
 
-class GPSLocation(db.Model):
-    __tablename__ = "gps_location_tbl"
+# class GPSLocation(db.Model):
+#     __tablename__ = "gps_location_tbl"
+#     __table_args__ = {"schema": "smart_cane_db"}
+
+#     location_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+#     vip_id = db.Column(
+#         db.Integer, db.ForeignKey("smart_cane_db.vip_tbl.vip_id"), nullable=False
+#     )
+#     latitude = db.Column(db.Numeric(10, 8), nullable=False)
+#     longitude = db.Column(db.Numeric(11, 8), nullable=False)
+#     location = db.Column(db.Text, nullable=False)
+#     timestamp = db.Column(db.TIMESTAMP, default=lambda: datetime.now(timezone.utc))
+
+#     alerts = db.relationship("EmergencyAlert", backref="location", lazy=True)
+
+
+class DeviceLastLocation(db.Model):
+    __tablename__ = "device_last_location_tbl"
     __table_args__ = {"schema": "smart_cane_db"}
 
-    location_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    vip_id = db.Column(
-        db.Integer, db.ForeignKey("smart_cane_db.vip_tbl.vip_id"), nullable=False
+    device_id = db.Column(
+        db.Integer,
+        db.ForeignKey("smart_cane_db.device_tbl.device_id"),
+        primary_key=True,
     )
-    latitude = db.Column(db.Numeric(10, 8), nullable=False)
-    longitude = db.Column(db.Numeric(11, 8), nullable=False)
-    location = db.Column(db.Text, nullable=False)
-    timestamp = db.Column(db.TIMESTAMP, default=lambda: datetime.now(timezone.utc))
+    lat = db.Column(db.Numeric(10, 7), nullable=True)
+    lng = db.Column(db.Numeric(10, 7), nullable=True)
+    sats = db.Column(db.Integer, nullable=True)
+    fix_status = db.Column(db.SmallInteger, nullable=False, default=0)
+    hdop = db.Column(db.Numeric(6, 2), nullable=True)
+    gps_status = db.Column(db.Integer, nullable=False, default=0)
+    recorded_at = db.Column(
+        db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at = db.Column(
+        db.TIMESTAMP,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
 
-    alerts = db.relationship("EmergencyAlert", backref="location", lazy=True)
+    device = db.relationship(
+        "Device",
+        backref=db.backref("last_location", uselist=False),
+    )
+
+    def __repr__(self):
+        return f"<DeviceLastLocation {self.device_id}>"
 
 
 class NoteReminder(db.Model):
@@ -231,21 +271,22 @@ class NoteReminder(db.Model):
     )
 
 
-class EmergencyAlert(db.Model):
-    __tablename__ = "emergency_alert_tbl"
-    __table_args__ = {"schema": "smart_cane_db"}
+# class EmergencyAlert(db.Model):
+#     __tablename__ = "emergency_alert_tbl"
+#     __table_args__ = {"schema": "smart_cane_db"}
 
-    alert_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    vip_id = db.Column(
-        db.Integer, db.ForeignKey("smart_cane_db.vip_tbl.vip_id"), nullable=False
-    )
-    location_id = db.Column(
-        db.Integer,
-        db.ForeignKey("smart_cane_db.gps_location_tbl.location_id"),
-        nullable=False,
-    )
-    triggered_at = db.Column(db.TIMESTAMP, default=lambda: datetime.now(timezone.utc))
-    acknowledged = db.Column(db.Boolean, default=False)
+#     alert_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+#     vip_id = db.Column(
+#         db.Integer, db.ForeignKey("smart_cane_db.vip_tbl.vip_id"), nullable=False
+#     )
+#     location_id = db.Column(
+#         db.Integer,
+#         db.ForeignKey("smart_cane_db.gps_location_tbl.location_id"),
+#         nullable=False,
+#     )
+#     triggered_at = db.Column(db.TIMESTAMP, default=lambda: datetime.now(timezone.utc))
+#     acknowledged = db.Column(db.Boolean, default=False)
+
 
 class DeviceConfig(db.Model):
     __tablename__ = "device_config_tbl"
@@ -257,7 +298,7 @@ class DeviceConfig(db.Model):
         db.Integer,
         db.ForeignKey("smart_cane_db.device_tbl.device_id"),
         nullable=False,
-        unique=True
+        unique=True,
     )
 
     config_json = db.Column(db.JSON, nullable=False)
@@ -267,6 +308,8 @@ class DeviceConfig(db.Model):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+
+
 class AccountHistory(db.Model):
     __tablename__ = "account_history_tbl"
     __table_args__ = {"schema": "smart_cane_db"}
@@ -277,7 +320,7 @@ class AccountHistory(db.Model):
         db.ForeignKey("smart_cane_db.guardian_tbl.guardian_id"),
         nullable=False,
     )
-    device_id = db.Column(                                          # NEW
+    device_id = db.Column(  # NEW
         db.Integer,
         db.ForeignKey("smart_cane_db.device_tbl.device_id"),
         nullable=True,
@@ -288,3 +331,89 @@ class AccountHistory(db.Model):
 
     def __repr__(self):
         return f"<AccountHistory {self.guardian_id} - {self.action}>"
+
+
+class DeviceLog(db.Model):
+    __tablename__ = "device_logs_tbl"
+    __table_args__ = {"schema": "smart_cane_db"}
+
+    log_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    device_id = db.Column(
+        db.Integer,
+        db.ForeignKey("smart_cane_db.device_tbl.device_id"),
+        nullable=False,
+        index=True,
+    )
+
+    guardian_id = db.Column(
+        db.Integer,
+        db.ForeignKey("smart_cane_db.guardian_tbl.guardian_id"),
+        nullable=True,
+        index=True,
+    )
+
+    activity_type = db.Column(db.String(50), nullable=False)
+
+    status = db.Column(db.String(20), nullable=True)
+    message = db.Column(db.Text, nullable=False)
+
+    metadata_json = db.Column(db.JSON, nullable=True)
+
+    created_at = db.Column(
+        db.TIMESTAMP,
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+        index=True,
+    )
+
+    def __repr__(self):
+        return f"<DeviceLog {self.device_id} - {self.activity_type}>"
+
+
+class PushSubscription(db.Model):
+    __tablename__ = "push_subscription_tbl"
+    __table_args__ = {"schema": "smart_cane_db"}
+
+    subscription_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    guardian_id = db.Column(
+        db.Integer,
+        db.ForeignKey("smart_cane_db.guardian_tbl.guardian_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    endpoint = db.Column(db.Text, nullable=False, unique=False)
+    p256dh = db.Column(db.Text, nullable=False)
+    auth = db.Column(db.Text, nullable=False)
+    user_agent = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(
+        db.TIMESTAMP,
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = db.Column(
+        db.TIMESTAMP,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    guardian = db.relationship("Guardian", back_populates="push_subscriptions")
+
+    def to_dict(self):
+        return {
+            "subscription_id": self.subscription_id,
+            "guardian_id": self.guardian_id,
+            "endpoint": self.endpoint,
+            "p256dh": self.p256dh,
+            "auth": self.auth,
+            "user_agent": self.user_agent,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+    def __repr__(self):
+        return f"<PushSubscription {self.guardian_id}>"

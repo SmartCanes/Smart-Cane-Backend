@@ -5,7 +5,7 @@ from flask_limiter.util import get_remote_address
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager
 from dotenv import load_dotenv
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from sqlalchemy import text
 from flask_cors import CORS
 
@@ -96,17 +96,13 @@ def create_app():
     from app.routes.auth import auth_bp
     from app.routes.vip import vip_bp
     from app.routes.guardian import guardian_bp
-    from app.routes.location import location_bp
     from app.routes.reminders import reminders_bp
-    from app.routes.alerts import alerts_bp
     from app.routes.device import device
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(vip_bp, url_prefix="/api/vip")
     app.register_blueprint(guardian_bp, url_prefix="/api/guardian")
-    app.register_blueprint(location_bp, url_prefix="/api/location")
     app.register_blueprint(reminders_bp, url_prefix="/api/reminders")
-    app.register_blueprint(alerts_bp, url_prefix="/api/alerts")
     app.register_blueprint(device, url_prefix="/api/device")
 
     @app.route("/uploads/<path:filename>")
