@@ -8,7 +8,14 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from sqlalchemy import func
 
 from app import db
-from app.models import Device, DeviceGuardian, Guardian, GuardianInvitation, DeviceLog
+from app.models import (
+    Device,
+    DeviceGuardian,
+    Guardian,
+    GuardianInvitation,
+    DeviceLog,
+    DeviceLastLocation,
+)
 from app.routes import guardian
 from app.utils.auth import guardian_required
 from app.utils.email_service import send_guardian_invite_email
@@ -257,6 +264,7 @@ def unpair_device(guardian, device_id):
 
     except Exception as e:
         db.session.rollback()
+        print(e)
         return error_response("Failed to unpair device", 500, str(e))
 
 
@@ -1144,6 +1152,77 @@ def toggle_emergency_guardian(current_guardian, device_id, guardian_id):
             500,
             str(e),
         )
+
+
+@device.route("/last-location/<string:device_serial>", methods=["GET"])
+@guardian_required
+def get_device_last_location(guardian, device_serial):
+    try:
+        if not device_serial:
+            return error_response("device_serial is required", 400)
+
+        device = Device.query.filter_by(device_serial_number=device_serial).first()
+        if not device:
+            return error_response("Device not found", 404)
+
+        requester_link = DeviceGuardian.query.filter_by(
+            device_id=device.device_id,
+            guardian_id=guardian.guardian_id,
+        ).first()
+
+        if not requester_link:
+            return error_response(
+                "You are not authorized to view location for this device",
+                403,
+            )
+
+        last_location = DeviceLastLocation.query.filter_by(
+            device_id=device.device_id
+        ).first()
+
+        if not last_location:
+            return success_response(
+                data={
+                    "device_serial_number": device.device_serial_number,
+                    "last_location": None,
+                },
+                message="No last location found for device",
+            )
+
+        data = {
+            "device_id": device.device_id,
+            "device_serial_number": device.device_serial_number,
+            "lat": float(last_location.lat) if last_location.lat is not None else None,
+            "lng": float(last_location.lng) if last_location.lng is not None else None,
+            "sats": last_location.sats,
+            "fix_status": last_location.fix_status,
+            "hdop": (
+                float(last_location.hdop) if last_location.hdop is not None else None
+            ),
+            "gps_status": last_location.gps_status,
+            "recorded_at": (
+                last_location.recorded_at.isoformat()
+                if last_location.recorded_at
+                else None
+            ),
+            "updated_at": (
+                last_location.updated_at.isoformat()
+                if last_location.updated_at
+                else None
+            ),
+        }
+
+        return success_response(
+            data={
+                "device_serial_number": device.device_serial_number,
+                "last_location": data,
+            },
+            message="Device last location retrieved successfully",
+        )
+
+    except Exception as e:
+        db.session.rollback()
+        return error_response("Failed to retrieve device last location", 500, str(e))
 
 
 @device.route("/pending-invites", methods=["GET"])
