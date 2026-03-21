@@ -1,3 +1,5 @@
+from sqlite3 import IntegrityError
+
 from flask import Blueprint, request, current_app
 from app import db
 from app.models import Guardian, VIP
@@ -428,3 +430,121 @@ def get_account_history(guardian):
     except Exception as e:
         db.session.rollback()
         return error_response("Failed to retrieve history", 500, str(e))
+
+
+@guardian_bp.route("/push-subscriptions", methods=["POST"])
+@guardian_required
+def save_push_subscription(guardian):
+    try:
+        data = request.get_json(silent=True)
+
+        if not isinstance(data, dict):
+            return error_response("Invalid JSON payload", 400)
+
+        subscription = data.get("subscription")
+        user_agent = data.get("userAgent")
+
+        if not isinstance(subscription, dict):
+            return error_response("Subscription is required", 400)
+
+        endpoint = subscription.get("endpoint")
+        keys = subscription.get("keys", {})
+        p256dh = keys.get("p256dh")
+        auth = keys.get("auth")
+
+        if not endpoint or not p256dh or not auth:
+            return error_response("Invalid push subscription payload", 400)
+
+        existing = PushSubscription.query.filter_by(endpoint=endpoint).first()
+
+        if existing:
+            existing.guardian_id = guardian.guardian_id
+            existing.p256dh = p256dh
+            existing.auth = auth
+            existing.user_agent = user_agent
+            existing.updated_at = datetime.now(timezone.utc)
+            db.session.commit()
+
+            return success_response(
+                data=existing.to_dict(),
+                message="Push subscription updated successfully",
+            )
+
+        new_subscription = PushSubscription(
+            guardian_id=guardian.guardian_id,
+            endpoint=endpoint,
+            p256dh=p256dh,
+            auth=auth,
+            user_agent=user_agent,
+        )
+
+        db.session.add(new_subscription)
+        db.session.commit()
+
+        return success_response(
+            data=new_subscription.to_dict(),
+            message="Push subscription saved successfully",
+        )
+
+    except IntegrityError:
+        db.session.rollback()
+        return error_response("Push subscription already exists", 409)
+    except Exception as e:
+        db.session.rollback()
+        return error_response("Failed to save push subscription", 500, str(e))
+
+
+@guardian_bp.route("/push-subscriptions", methods=["DELETE"])
+@guardian_required
+def delete_push_subscription(guardian):
+    try:
+        data = request.get_json(silent=True)
+
+        if not isinstance(data, dict):
+            return error_response("Invalid JSON payload", 400)
+
+        subscription = data.get("subscription")
+
+        if not isinstance(subscription, dict):
+            return error_response("Subscription is required", 400)
+
+        endpoint = subscription.get("endpoint")
+
+        if not endpoint:
+            return error_response("Subscription endpoint is required", 400)
+
+        existing = PushSubscription.query.filter_by(
+            guardian_id=guardian.guardian_id,
+            endpoint=endpoint,
+        ).first()
+
+        if not existing:
+            return error_response("Push subscription not found", 404)
+
+        db.session.delete(existing)
+        db.session.commit()
+
+        return success_response(message="Push subscription deleted successfully")
+
+    except Exception as e:
+        db.session.rollback()
+        return error_response("Failed to delete push subscription", 500, str(e))
+
+
+@guardian_bp.route("/push-subscriptions", methods=["GET"])
+@guardian_required
+def get_my_push_subscriptions(guardian):
+    try:
+        subscriptions = (
+            PushSubscription.query.filter_by(guardian_id=guardian.guardian_id)
+            .order_by(PushSubscription.created_at.desc())
+            .all()
+        )
+
+        return success_response(
+            data=[subscription.to_dict() for subscription in subscriptions],
+            message="Push subscriptions retrieved successfully",
+        )
+
+    except Exception as e:
+        return error_response("Failed to fetch push subscriptions", 500, str(e))

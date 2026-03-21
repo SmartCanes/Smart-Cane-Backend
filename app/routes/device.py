@@ -1,7 +1,8 @@
 import os
+import secrets
+import json
 from flask import Blueprint, current_app, request
 from datetime import datetime, timedelta, timezone
-import secrets
 
 from flask_jwt_extended import jwt_required
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
@@ -15,6 +16,7 @@ from app.models import (
     GuardianInvitation,
     DeviceLog,
     DeviceLastLocation,
+    DeviceRoute,
 )
 from app.routes import guardian
 from app.utils.auth import guardian_required
@@ -29,6 +31,70 @@ device = Blueprint("device", __name__)
 
 INVITE_TOKEN_SALT = "guardian-invite"
 INVITE_TOKEN_MAX_AGE = 60 * 60 * 24
+
+ROUTE_CACHE_TTL_SECONDS = 30
+_route_cache = {}
+
+
+def _route_cache_get(device_id):
+    cached = _route_cache.get(device_id)
+    if not cached:
+        return None
+
+    age_seconds = (datetime.now(timezone.utc) - cached["cached_at"]).total_seconds()
+    if age_seconds > ROUTE_CACHE_TTL_SECONDS:
+        _route_cache.pop(device_id, None)
+        return None
+
+    return cached
+
+
+def _route_cache_set(device_id, data):
+    _route_cache[device_id] = {"data": data, "cached_at": datetime.now(timezone.utc)}
+
+
+def _route_cache_invalidate(device_id):
+    _route_cache.pop(device_id, None)
+
+
+def _serialize_route(route: DeviceRoute, device):
+    if not route:
+        return None
+
+    def _decimal_to_float(value):
+        try:
+            return float(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    def _json_field(value):
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except Exception:
+                return None
+        return value
+
+    return {
+        "routeId": route.route_id,
+        "deviceId": route.device_id,
+        "deviceSerialNumber": device.device_serial_number if device else None,
+        "guardianId": route.guardian_id,
+        "destination": {
+            "lat": _decimal_to_float(route.destination_lat),
+            "lng": _decimal_to_float(route.destination_lng),
+            "label": route.destination_label,
+        },
+        "routeGeoJson": _json_field(route.route_geojson),
+        "providerPayload": _json_field(route.provider_payload),
+        "status": route.status,
+        "distanceMeters": _decimal_to_float(route.distance_meters),
+        "durationMs": route.duration_ms,
+        "requestedAt": route.requested_at.isoformat() if route.requested_at else None,
+        "completedAt": route.completed_at.isoformat() if route.completed_at else None,
+        "clearedAt": route.cleared_at.isoformat() if route.cleared_at else None,
+        "updatedAt": route.updated_at.isoformat() if route.updated_at else None,
+    }
 
 
 def generate_guardian_invite_token(payload: dict) -> str:
@@ -1152,6 +1218,40 @@ def toggle_emergency_guardian(current_guardian, device_id, guardian_id):
             500,
             str(e),
         )
+
+
+@device.route("/<int:device_id>/route", methods=["GET"])
+@guardian_required
+def get_device_route(guardian, device_id):
+    try:
+        device_obj = Device.query.get(device_id)
+        if not device_obj:
+            return error_response("Device not found", 404)
+
+        device_guardian = DeviceGuardian.query.filter_by(
+            device_id=device_id, guardian_id=guardian.guardian_id
+        ).first()
+
+        if not device_guardian:
+            return error_response(
+                "You are not authorized to view routes for this device", 403
+            )
+
+        route = DeviceRoute.query.filter_by(device_id=device_id).first()
+
+        if not route:
+            return success_response(
+                data={"route": None}, message="No route set for this device"
+            )
+
+        payload = _serialize_route(route, device_obj)
+
+        return success_response(
+            data={"route": payload}, message="Device route retrieved successfully"
+        )
+
+    except Exception as e:
+        return error_response("Failed to retrieve device route", 500, str(e))
 
 
 @device.route("/last-location/<string:device_serial>", methods=["GET"])

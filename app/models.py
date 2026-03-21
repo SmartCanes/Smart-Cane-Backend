@@ -247,6 +247,65 @@ class DeviceLastLocation(db.Model):
         return f"<DeviceLastLocation {self.device_id}>"
 
 
+class DeviceRoute(db.Model):
+    __tablename__ = "device_route_tbl"
+    __table_args__ = {"schema": "smart_cane_db"}
+
+    route_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    device_id = db.Column(
+        db.Integer,
+        db.ForeignKey("smart_cane_db.device_tbl.device_id"),
+        nullable=False,
+        unique=True,
+    )
+
+    guardian_id = db.Column(
+        db.Integer,
+        db.ForeignKey("smart_cane_db.guardian_tbl.guardian_id"),
+        nullable=True,
+    )
+
+    destination_label = db.Column(db.String(255), nullable=True)
+    destination_lat = db.Column(db.Numeric(10, 7), nullable=False)
+    destination_lng = db.Column(db.Numeric(10, 7), nullable=False)
+
+    route_geojson = db.Column(db.JSON, nullable=True)
+    provider_payload = db.Column(db.JSON, nullable=True)
+
+    status = db.Column(
+        db.Enum(
+            "pending",
+            "active",
+            "completed",
+            "cleared",
+            "failed",
+            name="route_status",
+            schema="smart_cane_db",
+        ),
+        default="pending",
+        nullable=False,
+    )
+
+    distance_meters = db.Column(db.Numeric(12, 2), nullable=True)
+    duration_ms = db.Column(db.BigInteger, nullable=True)
+
+    requested_at = db.Column(
+        db.TIMESTAMP, default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    completed_at = db.Column(db.TIMESTAMP, nullable=True)
+    cleared_at = db.Column(db.TIMESTAMP, nullable=True)
+    updated_at = db.Column(
+        db.TIMESTAMP,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    def __repr__(self):
+        return f"<DeviceRoute {self.device_id} - {self.status}>"
+
+
 class NoteReminder(db.Model):
     __tablename__ = "note_reminder_tbl"
     __table_args__ = {"schema": "smart_cane_db"}

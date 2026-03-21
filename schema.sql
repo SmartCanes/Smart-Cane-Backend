@@ -6,6 +6,7 @@
 SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS device_logs_tbl;
+DROP TABLE IF EXISTS device_route_tbl;
 DROP TABLE IF EXISTS account_history_tbl;
 DROP TABLE IF EXISTS device_config_tbl;
 DROP TABLE IF EXISTS guardian_invitations;
@@ -247,6 +248,40 @@ CREATE TABLE device_config_tbl (
         ON DELETE CASCADE
         ON UPDATE CASCADE
 ) ENGINE=InnoDB;
+
+-- =========================
+-- device_route_tbl (DeviceRoute)
+-- =========================
+CREATE TABLE device_route_tbl (
+    route_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    device_id INT NOT NULL UNIQUE,
+    guardian_id INT NULL,
+    destination_label VARCHAR(255) NULL,
+    destination_lat DECIMAL(10,7) NOT NULL,
+    destination_lng DECIMAL(10,7) NOT NULL,
+    route_geojson JSON NULL,
+    provider_payload JSON NULL,
+    status ENUM('pending', 'active', 'completed', 'cleared', 'failed') NOT NULL DEFAULT 'pending',
+    distance_meters DECIMAL(12,2) NULL,
+    duration_ms BIGINT NULL,
+    requested_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP NULL DEFAULT NULL,
+    cleared_at TIMESTAMP NULL DEFAULT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_route_device
+        FOREIGN KEY (device_id) REFERENCES device_tbl(device_id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+
+    CONSTRAINT fk_route_guardian
+        FOREIGN KEY (guardian_id) REFERENCES guardian_tbl(guardian_id)
+        ON DELETE SET NULL
+        ON UPDATE CASCADE
+) ENGINE=InnoDB;
+
+CREATE INDEX idx_route_status_updated
+    ON device_route_tbl (status, updated_at);
 
 -- =========================
 -- account_history_tbl (AccountHistory)
