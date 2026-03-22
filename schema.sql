@@ -60,7 +60,7 @@ CREATE TABLE guardian_tbl (
     village VARCHAR(100),
     street_address TEXT,
     role VARCHAR(50) DEFAULT 'guardian',
-    has_seen_tour TINYINT(1) NOT NULL DEFAULT 0,
+    has_seen_tour VARCHAR(255) NOT NULL DEFAULT '',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;

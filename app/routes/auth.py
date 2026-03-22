@@ -522,7 +522,7 @@ def login():
                 **user_data,
                 "device_registered": device_registered,
                 "is_new_user": _is_new_user(guardian),
-                "has_seen_tour": bool(guardian.has_seen_tour),
+                "has_seen_tour": guardian.has_seen_tour or "",
                 "date_joined": (
                     guardian.created_at.isoformat()
                     if guardian.created_at
@@ -656,7 +656,7 @@ def verify_token(guardian):
                     "issued_at": jwt_data.get("iat"),
                     "token_type": jwt_data.get("type", "access"),
                     "is_new_user": _is_new_user(guardian),
-                    "has_seen_tour": bool(guardian.has_seen_tour),
+                    "has_seen_tour": guardian.has_seen_tour or "",
                     "date_joined": (
                         guardian.created_at.isoformat()
                         if guardian.created_at

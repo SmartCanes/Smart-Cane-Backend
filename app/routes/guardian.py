@@ -139,7 +139,7 @@ def get_profile(guardian):
                 guardian.updated_at.isoformat() if guardian.updated_at else None
             ),
             "is_new_user": _is_new_user(guardian),
-            "has_seen_tour": bool(guardian.has_seen_tour),
+            "has_seen_tour": guardian.has_seen_tour or "",
             "date_joined": (
                 guardian.created_at.isoformat() if guardian.created_at else None
             ),
@@ -154,14 +154,32 @@ def get_profile(guardian):
 @guardian_bp.route("/tour-complete", methods=["PATCH"])
 @guardian_required
 def mark_tour_complete(guardian):
-    """Mark that the guardian has completed (or dismissed) the onboarding tour.
-    Sets has_seen_tour = True so the tour is never shown again on any device.
-    """
+    """Append a completed page path to guardian.has_seen_tour CSV string."""
     try:
-        guardian.has_seen_tour = True
+        data = request.get_json(silent=True) or {}
+        completed_page = str(data.get("completed_page") or "").strip()
+
+        if not completed_page:
+            return error_response("completed_page is required", 400)
+
+        if not completed_page.startswith("/"):
+            return error_response("completed_page must be a valid route path", 400)
+
+        existing_csv = str(guardian.has_seen_tour or "").strip()
+        pages = [p.strip() for p in existing_csv.split(",") if p and p.strip()]
+
+        if completed_page not in pages:
+            pages.append(completed_page)
+
+        guardian.has_seen_tour = ",".join(pages)
         db.session.commit()
+
         return success_response(
-            data={"has_seen_tour": True}, message="Tour marked as complete"
+            data={
+                "has_seen_tour": guardian.has_seen_tour,
+                "completed_pages": pages,
+            },
+            message="Tour page marked as complete",
         )
     except Exception as e:
         db.session.rollback()
