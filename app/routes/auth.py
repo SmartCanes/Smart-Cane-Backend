@@ -460,19 +460,25 @@ def login():
         # Use username for lockout tracking (consistent)
         lockout_username = guardian.username if guardian else identifier
 
-        # Progressive lockout
-        block_info = get_login_block_info(username=lockout_username, ip_address=ip_addr)
-        if not block_info["allowed"]:
-            return error_response(
-                f"Too many failed login attempts. Try again in {block_info['retry_after']} seconds.",
-                429,
-            )
+        # Evaluate credentials first; allow successful login even during lockout
+        credentials_valid = guardian is not None and guardian.check_password(password)
 
-        # Invalid credentials
-        if not guardian or not guardian.check_password(password):
+        if not credentials_valid:
             attempt = LoginAttempt(username=lockout_username, ip_address=ip_addr)
             db.session.add(attempt)
             db.session.commit()
+
+            # Progressive lockout after recording the failed attempt
+            block_info = get_login_block_info(
+                username=lockout_username, ip_address=ip_addr
+            )
+
+            if not block_info["allowed"]:
+                return error_response(
+                    f"Too many failed login attempts. Try again in {block_info['retry_after']} seconds.",
+                    429,
+                )
+
             return error_response(
                 "Login failed. Please check your email/username or password.", 401
             )
