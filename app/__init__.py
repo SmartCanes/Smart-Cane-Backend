@@ -22,7 +22,12 @@ def create_app():
 
     db.init_app(app)
     jwt.init_app(app)
-    CORS(app, origins=os.getenv("FRONTEND_URL", "http://localhost:5173"), supports_credentials=True)
+    frontend_origins = os.getenv("FRONTEND_URL")
+    if frontend_origins:
+        cors_origins = [origin.strip() for origin in frontend_origins.split(",") if origin.strip()]
+    else:
+        cors_origins = ["http://localhost:5174", "http://127.0.0.1:5174"]
+    CORS(app, origins=cors_origins, supports_credentials=True)
 
     @app.route("/static/uploads/profiles/<filename>")
     def serve_profile_image(filename: str):

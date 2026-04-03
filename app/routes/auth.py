@@ -147,7 +147,19 @@ def password_reset_request_otp():
     db.session.add(otp)
     db.session.commit()
 
-    send_admin_otp_email(recipient_email=email, otp_code=code, admin_name=admin.first_name)
+    send_result = send_admin_otp_email(
+        recipient_email=email,
+        otp_code=code,
+        admin_name=admin.first_name,
+    )
+    if not send_result.get("ok"):
+        otp.is_used = True
+        db.session.commit()
+        return jsonify({
+            "message": "Failed to send OTP email.",
+            "error": send_result.get("error") or "Unknown SMTP error.",
+        }), 500
+
     return jsonify({"message": "If that email exists, an OTP has been sent."}), 200
 
 

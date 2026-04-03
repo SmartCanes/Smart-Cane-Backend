@@ -9,6 +9,14 @@ from datetime import datetime, timezone
 notifications_bp = Blueprint("notifications", __name__, url_prefix="/api/notifications")
 
 
+def _as_utc_iso(dt):
+    if not dt:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
 def _current_admin():
     admin_id = int(get_jwt_identity())
     return Admin.query.get(admin_id)
@@ -88,8 +96,9 @@ def list_notifications():
         if not is_read:
             unread_count += 1
         d = n.to_dict()
+        d["created_at"] = _as_utc_iso(n.created_at)
         d["is_read"] = is_read
-        d["read_at"] = r.read_at.isoformat() if r and r.read_at else None
+        d["read_at"] = _as_utc_iso(r.read_at) if r and r.read_at else None
         items.append(d)
 
     return jsonify({"items": items, "unread_count": unread_count}), 200

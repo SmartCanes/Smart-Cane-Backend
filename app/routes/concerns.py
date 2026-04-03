@@ -1,10 +1,11 @@
 from flask import Blueprint, request, jsonify, g
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
-from app.models import GuardianConcern, Admin
+from app.models import GuardianConcern, Admin, AdminAuditLog
 from app.models import Notification, NotificationRead
 from datetime import datetime, timezone
 import logging
+import json
 from sqlalchemy import and_
 
 logger = logging.getLogger(__name__)
@@ -59,7 +60,7 @@ def get_concerns():
     """
     try:
         status = request.args.get("status")
-        query = GuardianConcern.query
+        query = GuardianConcern.query.filter_by(is_deleted=False)
         if status and status in ["unread", "read", "resolved"]:
             query = query.filter_by(status=status)
         concerns = query.order_by(GuardianConcern.created_at.desc()).all()
@@ -83,6 +84,8 @@ def update_concern(concern_id):
     try:
         concern = GuardianConcern.query.get(concern_id)
         if not concern:
+            return jsonify({"error": "Concern not found"}), 404
+        if concern.is_deleted:
             return jsonify({"error": "Concern not found"}), 404
 
         data = request.get_json()
@@ -148,14 +151,54 @@ def update_concern(concern_id):
 @super_admin_required
 def delete_concern(concern_id):
     """
-    Delete a guardian concern (permanently). Super admin only.
+    Soft-delete a guardian concern. Super admin only.
     """
     try:
         concern = GuardianConcern.query.get(concern_id)
         if not concern:
             return jsonify({"error": "Concern not found"}), 404
 
-        db.session.delete(concern)
+        if concern.is_deleted:
+            return jsonify({"error": "Concern already deleted"}), 400
+
+        data = request.get_json(silent=True) or {}
+        reason_code = str(data.get("reason_code", "")).strip()
+        reason_text = str(data.get("reason_text", "")).strip()
+
+        if not reason_code:
+            return jsonify({"error": "reason_code is required"}), 400
+        if len(reason_text) < 10:
+            return jsonify({"error": "reason_text is required and must be at least 10 characters"}), 400
+
+        concern.is_deleted = True
+        concern.deleted_at = datetime.now(timezone.utc)
+        concern.deleted_by_admin_id = g.current_admin.admin_id
+        concern.deleted_reason_code = reason_code
+        concern.deleted_reason_text = reason_text
+
+        db.session.add(
+            AdminAuditLog(
+                actor_admin_id=g.current_admin.admin_id,
+                target_concern_id=concern.concern_id,
+                action_type="concern_delete",
+                old_value_json=json.dumps(
+                    {
+                        "concern_id": concern.concern_id,
+                        "name": concern.name,
+                        "email": concern.email,
+                        "message": concern.message,
+                        "status": concern.status,
+                    }
+                ),
+                new_value_json=json.dumps({"is_deleted": True}),
+                reason_code=reason_code,
+                reason_text=reason_text,
+                status="success",
+                ip_address=request.headers.get("X-Forwarded-For", request.remote_addr),
+                user_agent=(request.user_agent.string or "")[:255],
+            )
+        )
+
         db.session.commit()
         return jsonify({"message": "Concern deleted successfully"})
 
