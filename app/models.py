@@ -29,6 +29,88 @@ class LoginAttempt(db.Model):
     ip_address = db.Column(db.String(45), nullable=True)
     created_at = db.Column(db.TIMESTAMP, default=datetime.now(timezone.utc))
 
+class Admin(db.Model):
+    __tablename__ = "admin_tbl"
+    __table_args__ = {"schema": "smart_cane_db"}
+
+    admin_id          = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    username          = db.Column(db.String(100), nullable=False, unique=True)
+    email             = db.Column(db.String(255), nullable=False, unique=True)
+    password          = db.Column(db.String(255), nullable=False)
+    first_name        = db.Column(db.String(255), nullable=False)
+    middle_name       = db.Column(db.String(255), nullable=True)
+    last_name         = db.Column(db.String(255), nullable=False)
+    contact_number    = db.Column(db.String(20),  nullable=True)
+    province          = db.Column(db.String(100), nullable=True)
+    city              = db.Column(db.String(100), nullable=True)
+    barangay          = db.Column(db.String(100), nullable=True)
+    street_address    = db.Column(db.Text,        nullable=True)
+    role              = db.Column(
+        db.Enum("super_admin", "admin", name="admin_role"),
+        nullable=False,
+        default="admin",
+    )
+    # 1 = first time logging in, 0 = already set their own password
+    is_first_login    = db.Column(db.Boolean,     nullable=False, default=True)
+    # URL of uploaded profile picture e.g. http://localhost:5000/static/uploads/profiles/xxx.jpg
+    profile_image_url = db.Column(db.String(500), nullable=True,  default=None)
+    created_at        = db.Column(db.TIMESTAMP, default=lambda: datetime.now(timezone.utc))
+    updated_at        = db.Column(
+        db.TIMESTAMP,
+        default=lambda:  datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    def check_password(self, plain_password: str) -> bool:
+       if self.password.startswith(("$2b$", "$2a$")):
+           return bcrypt.checkpw(
+               plain_password.encode("utf-8"),
+               self.password.encode("utf-8"),
+           )
+       # fallback for any legacy plain-text rows (remove once all are migrated)
+       return self.password == plain_password
+
+    def __repr__(self):
+        return f"<Admin {self.username}>"
+    
+class AdminArchive(db.Model):
+    """
+    Soft-delete archive for removed admin accounts.
+    Whenever a super_admin deletes an admin, the record is copied here
+    before being removed from admin_tbl.
+    """
+    __tablename__ = "admin_archive_tbl"
+    __table_args__ = {"schema": "smart_cane_db"}
+ 
+    archive_id        = db.Column(db.Integer, primary_key=True, autoincrement=True)
+ 
+    # ── Original admin fields (copied verbatim) ───────────────────────────────
+    admin_id          = db.Column(db.Integer,      nullable=False)   # original PK
+    username          = db.Column(db.String(100),  nullable=False)
+    email             = db.Column(db.String(255),  nullable=False)
+    password          = db.Column(db.String(255),  nullable=False)   # keep hashed
+    first_name        = db.Column(db.String(255),  nullable=False)
+    middle_name       = db.Column(db.String(255),  nullable=True)
+    last_name         = db.Column(db.String(255),  nullable=False)
+    contact_number    = db.Column(db.String(20),   nullable=True)
+    province          = db.Column(db.String(100),  nullable=True)
+    city              = db.Column(db.String(100),  nullable=True)
+    barangay          = db.Column(db.String(100),  nullable=True)
+    street_address    = db.Column(db.Text,         nullable=True)
+    role              = db.Column(db.String(50),   nullable=False)
+    profile_image_url = db.Column(db.String(500),  nullable=True)
+    original_created_at = db.Column(db.TIMESTAMP, nullable=True)
+ 
+    # ── Archive metadata ───────────────────────────────────────────────────────
+    archived_at       = db.Column(
+        db.TIMESTAMP,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    archived_by       = db.Column(db.Integer, nullable=True)   # admin_id of deleter
+ 
+    def __repr__(self):
+        return f"<AdminArchive admin_id={self.admin_id} username={self.username}>"
 
 class GuardianInvitation(db.Model):
     __tablename__ = "guardian_invitations"
@@ -476,3 +558,61 @@ class PushSubscription(db.Model):
 
     def __repr__(self):
         return f"<PushSubscription {self.guardian_id}>"
+
+class GuardianConcern(db.Model):
+    """
+    Stores contact-form submissions from the guardian-side guest page.
+    No authentication is required to submit; admins manage them via the
+    admin panel (view, reply, mark resolved).
+    """
+    __tablename__ = "guardian_concerns_tbl"
+    __table_args__ = {"schema": "smart_cane_db"}
+ 
+    concern_id  = db.Column(db.Integer, primary_key=True, autoincrement=True)
+ 
+
+    name        = db.Column(db.String(255), nullable=False)
+    email       = db.Column(db.String(255), nullable=False, index=True)
+    message     = db.Column(db.Text,        nullable=False)
+ 
+    status      = db.Column(
+        db.Enum("unread", "read", "resolved",
+                name="concern_status",
+                schema="smart_cane_db"),
+        nullable=False,
+        default="unread",
+        index=True,
+    )
+    admin_reply         = db.Column(db.Text,      nullable=True, default=None)
+    replied_by_admin_id = db.Column(db.Integer,   nullable=True, default=None)
+    replied_at          = db.Column(db.TIMESTAMP, nullable=True, default=None)
+ 
+    created_at  = db.Column(
+        db.TIMESTAMP,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+    updated_at  = db.Column(
+        db.TIMESTAMP,
+        nullable=False,
+        default=lambda:  datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+ 
+    def to_dict(self):
+        return {
+            "concern_id":          self.concern_id,
+            "name":                self.name,
+            "email":               self.email,
+            "message":             self.message,
+            "status":              self.status,
+            "admin_reply":         self.admin_reply,
+            "replied_by_admin_id": self.replied_by_admin_id,
+            "replied_at":          self.replied_at.isoformat() if self.replied_at else None,
+            "created_at":          self.created_at.isoformat() if self.created_at else None,
+            "updated_at":          self.updated_at.isoformat() if self.updated_at else None,
+        }
+ 
+    def __repr__(self):
+        return f"<GuardianConcern {self.concern_id} [{self.status}] from {self.email}>"

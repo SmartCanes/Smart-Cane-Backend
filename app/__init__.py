@@ -9,6 +9,7 @@ from datetime import timedelta
 from sqlalchemy import text
 from flask_cors import CORS
 
+
 from app.utils.responses import error_response
 
 
@@ -98,12 +99,14 @@ def create_app():
     from app.routes.guardian import guardian_bp
     from app.routes.reminders import reminders_bp
     from app.routes.device import device
+    from app.routes.contact import contact_bp  # ito van
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(vip_bp, url_prefix="/api/vip")
     app.register_blueprint(guardian_bp, url_prefix="/api/guardian")
     app.register_blueprint(reminders_bp, url_prefix="/api/reminders")
     app.register_blueprint(device, url_prefix="/api/device")
+    app.register_blueprint(contact_bp, url_prefix="/api/contact") #ito van
 
     @app.route("/uploads/<path:filename>")
     def serve_uploaded_file(filename):

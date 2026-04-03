@@ -45,6 +45,7 @@ import os
 from datetime import datetime, timezone
 import uuid
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from app.models import GuardianConcern 
 
 
 auth_bp = Blueprint("auth", __name__)
@@ -935,3 +936,4 @@ def change_password():
 
         traceback.print_exc()
         return error_response("Failed to change password", 500, str(e))
+
