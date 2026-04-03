@@ -6,9 +6,7 @@ from app.models import Guardian
 guardian_bp = Blueprint("guardian", __name__)
 
 
-# ─────────────────────────────────────────────
 #  Helpers
-# ─────────────────────────────────────────────
 def require_admin():
     claims = get_jwt()
     if claims.get("role") not in ("super_admin", "admin"):
@@ -26,7 +24,6 @@ def require_super_admin():
 def _serialize(g):
     """Full serialisation: guardian + linked devices + VIPs via those devices."""
 
-    # ── Devices & VIPs this guardian is linked to ────────────────────────────
     devices = []
     vips    = []
     vip_ids_seen = set()
@@ -71,9 +68,7 @@ def _serialize(g):
     }
 
 
-# ═════════════════════════════════════════════
 #  GUARDIAN MANAGEMENT
-# ═════════════════════════════════════════════
 
 @guardian_bp.route("/", methods=["GET"])
 @jwt_required()

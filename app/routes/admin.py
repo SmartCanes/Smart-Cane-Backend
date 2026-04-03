@@ -1,11 +1,12 @@
 import os
 import uuid
-import bcrypt                                       # ← NEW: pip install bcrypt
+import bcrypt
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from werkzeug.utils import secure_filename
 from app import db
-from app.models import Admin, AdminArchive, OTP     # ← added AdminArchive
+from app.models import Admin, AdminArchive, OTP
+from app.routes.notifications import create_notification
 from app.utils.admin_email_service import send_admin_otp_email
 from datetime import datetime, timezone, timedelta
 import random, string
@@ -16,9 +17,6 @@ ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 MAX_FILE_SIZE_MB   = 2
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Helpers
-# ─────────────────────────────────────────────────────────────────────────────
 
 def require_super_admin():
     claims = get_jwt()
@@ -28,7 +26,6 @@ def require_super_admin():
 
 
 def hash_password(plain: str) -> str:
-    """Return a bcrypt hash of the plain-text password."""
     return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
@@ -47,14 +44,10 @@ def get_upload_folder() -> str:
     return os.path.abspath(folder)
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-#  ADMIN MANAGEMENT  (super_admin only)
-# ═════════════════════════════════════════════════════════════════════════════
 
 @admin_bp.route("/", methods=["GET"])
 @jwt_required()
 def list_admins():
-    """All authenticated admins can view the list."""
     admins = Admin.query.order_by(Admin.created_at.desc()).all()
     return jsonify([{
         "admin_id":          a.admin_id,
@@ -98,7 +91,7 @@ def create_admin():
     new_admin = Admin(
         username       = data["username"].strip(),
         email          = data["email"].strip(),
-        password       = hash_password(data["password"].strip()),  # ← bcrypt hashed
+        password       = hash_password(data["password"].strip()),
         first_name     = data["first_name"].strip(),
         middle_name    = data.get("middle_name", "").strip() or None,
         last_name      = data["last_name"].strip(),
@@ -112,13 +105,21 @@ def create_admin():
     )
     db.session.add(new_admin)
     db.session.commit()
+
+    create_notification(
+        audience="all_admins",
+        type="admin_created",
+        title="New admin created",
+        body=f"{new_admin.first_name} {new_admin.last_name} ({new_admin.email}) was added.",
+        link_path="/admins",
+        related_admin_id=new_admin.admin_id,
+    )
     return jsonify({"message": "Admin created successfully.", "admin_id": new_admin.admin_id}), 201
 
 
 @admin_bp.route("/<int:target_id>/update", methods=["PUT"])
 @jwt_required()
 def update_admin(target_id):
-    """Super-admin updates another admin's details."""
     err = require_super_admin()
     if err:
         return err
@@ -126,21 +127,18 @@ def update_admin(target_id):
     target = Admin.query.get_or_404(target_id)
     data   = request.get_json(silent=True) or {}
 
-    # ── Username uniqueness check ──
     new_username = data.get("username", "").strip()
     if new_username and new_username != target.username:
         clash = Admin.query.filter_by(username=new_username).first()
         if clash and clash.admin_id != target_id:
             return jsonify({"message": "Username already taken."}), 409
 
-    # ── Email uniqueness check ──
     new_email = data.get("email", "").strip()
     if new_email and new_email != target.email:
         clash = Admin.query.filter_by(email=new_email).first()
         if clash and clash.admin_id != target_id:
             return jsonify({"message": "Email already taken."}), 409
 
-    # ── Apply updates ──
     target.first_name     = data.get("first_name",     target.first_name).strip()
     target.middle_name    = data.get("middle_name",     target.middle_name or "").strip() or None
     target.last_name      = data.get("last_name",       target.last_name).strip()
@@ -154,7 +152,6 @@ def update_admin(target_id):
     target.role           = data.get("role",             target.role)
     target.updated_at     = datetime.now(timezone.utc)
 
-    # ── Optional password reset ──
     new_password = data.get("password", "").strip()
     if new_password:
         target.password       = hash_password(new_password)
@@ -167,11 +164,7 @@ def update_admin(target_id):
 @admin_bp.route("/<int:target_id>/delete", methods=["DELETE"])
 @jwt_required()
 def delete_admin(target_id):
-    """
-    Super-admin deletes an admin:
-      1. Copy the record to admin_archive_tbl
-      2. Delete from admin_tbl
-    """
+    # Archive row then delete from admin_tbl.
     err = require_super_admin()
     if err:
         return err
@@ -184,7 +177,6 @@ def delete_admin(target_id):
 
     target = Admin.query.get_or_404(target_id)
 
-    # ── Archive first ──
     archive = AdminArchive(
         admin_id            = target.admin_id,
         username            = target.username,
@@ -206,16 +198,12 @@ def delete_admin(target_id):
     )
     db.session.add(archive)
 
-    # ── Then delete ──
     db.session.delete(target)
     db.session.commit()
 
     return jsonify({"message": "Admin deleted and archived successfully."}), 200
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-#  FIRST LOGIN FLOW
-# ═════════════════════════════════════════════════════════════════════════════
 
 @admin_bp.route("/request-otp", methods=["POST"])
 def request_otp():
@@ -282,12 +270,18 @@ def change_credentials():
     admin.is_first_login = False
     admin.updated_at     = datetime.now(timezone.utc)
     db.session.commit()
+
+    create_notification(
+        audience="super_admins",
+        type="admin_setup_completed",
+        title="Admin completed account setup",
+        body=f"{admin.first_name} {admin.last_name} finished setting up their account.",
+        link_path="/admins",
+        related_admin_id=admin.admin_id,
+    )
     return jsonify({"message": "Credentials updated successfully."}), 200
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-#  PROFILE  (logged-in admin's own profile)
-# ═════════════════════════════════════════════════════════════════════════════
 
 @admin_bp.route("/profile", methods=["GET"])
 @jwt_required()

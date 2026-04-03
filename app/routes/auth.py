@@ -2,8 +2,10 @@ import bcrypt                                        # ← pip install bcrypt
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from app import db
-from app.models import Admin, LoginAttempt
-from datetime import datetime, timezone
+from app.models import Admin, LoginAttempt, OTP
+from app.utils.admin_email_service import send_admin_otp_email
+from datetime import datetime, timezone, timedelta
+import random, string
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -28,6 +30,14 @@ def _check_password(stored: str, plain: str) -> bool:
         return bcrypt.checkpw(plain.encode("utf-8"), stored.encode("utf-8"))
     # Legacy plain-text fallback — remove this after migration
     return stored == plain
+
+
+def _hash_password(plain: str) -> str:
+    return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def _generate_otp(length: int = 6) -> str:
+    return "".join(random.choices(string.digits, k=length))
 
 
 @auth_bp.route("/login", methods=["POST"])
@@ -105,3 +115,96 @@ def me():
 @jwt_required()
 def logout():
     return jsonify({"message": "Logged out successfully."}), 200
+
+
+# PASSWORD RESET (no auth required)
+@auth_bp.route("/password-reset/request-otp", methods=["POST"])
+def password_reset_request_otp():
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip()
+    if not email:
+        return jsonify({"message": "Email is required."}), 400
+
+    admin = Admin.query.filter_by(email=email).first()
+    # Avoid leaking whether an email exists
+    if not admin:
+        return jsonify({"message": "If that email exists, an OTP has been sent."}), 200
+
+    OTP.query.filter_by(email=email, purpose="password_reset", is_used=False).update(
+        {"is_used": True}
+    )
+    db.session.commit()
+
+    code = _generate_otp()
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+    otp = OTP(
+        email=email,
+        otp_code=code,
+        is_used=False,
+        expires_at=expires_at,
+        purpose="password_reset",
+    )
+    db.session.add(otp)
+    db.session.commit()
+
+    send_admin_otp_email(recipient_email=email, otp_code=code, admin_name=admin.first_name)
+    return jsonify({"message": "If that email exists, an OTP has been sent."}), 200
+
+
+@auth_bp.route("/password-reset/verify-otp", methods=["POST"])
+def password_reset_verify_otp():
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip()
+    otp_code = (data.get("otp_code") or "").strip()
+    if not email or not otp_code:
+        return jsonify({"message": "email and otp_code are required."}), 400
+
+    otp = OTP.query.filter_by(
+        email=email,
+        otp_code=otp_code,
+        is_used=False,
+        purpose="password_reset",
+    ).first()
+    if not otp:
+        return jsonify({"message": "Invalid OTP."}), 400
+
+    if datetime.now(timezone.utc) > otp.expires_at.replace(tzinfo=timezone.utc):
+        return jsonify({"message": "OTP has expired. Please request a new one."}), 400
+
+    return jsonify({"message": "OTP verified."}), 200
+
+
+@auth_bp.route("/password-reset/reset", methods=["POST"])
+def password_reset_reset():
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip()
+    otp_code = (data.get("otp_code") or "").strip()
+    new_password = (data.get("new_password") or "").strip()
+    if not email or not otp_code or not new_password:
+        return jsonify({"message": "email, otp_code, and new_password are required."}), 400
+
+    admin = Admin.query.filter_by(email=email).first()
+    if not admin:
+        return jsonify({"message": "Invalid request."}), 400
+
+    otp = OTP.query.filter_by(
+        email=email,
+        otp_code=otp_code,
+        is_used=False,
+        purpose="password_reset",
+    ).first()
+    if not otp:
+        return jsonify({"message": "Invalid OTP."}), 400
+
+    if datetime.now(timezone.utc) > otp.expires_at.replace(tzinfo=timezone.utc):
+        return jsonify({"message": "OTP has expired. Please request a new one."}), 400
+
+    admin.password = _hash_password(new_password)
+    admin.is_first_login = False
+    admin.updated_at = datetime.now(timezone.utc)
+
+    otp.is_used = True
+    otp.used_at = datetime.now(timezone.utc)
+
+    db.session.commit()
+    return jsonify({"message": "Password updated successfully."}), 200

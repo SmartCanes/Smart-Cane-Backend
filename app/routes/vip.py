@@ -6,9 +6,7 @@ from app.models import VIP
 vip_bp = Blueprint("vip", __name__)
 
 
-# ─────────────────────────────────────────────
 #  Helpers
-# ─────────────────────────────────────────────
 def require_admin():
     claims = get_jwt()
     if claims.get("role") not in ("super_admin", "admin"):
@@ -66,9 +64,7 @@ def _serialize(v):
     }
 
 
-# ═════════════════════════════════════════════
 #  VIP MANAGEMENT
-# ═════════════════════════════════════════════
 
 @vip_bp.route("/", methods=["GET"])
 @jwt_required()

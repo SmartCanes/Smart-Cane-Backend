@@ -7,9 +7,7 @@ from datetime import datetime, timezone, timedelta
 device_bp = Blueprint("device", __name__)
 
 
-# ─────────────────────────────────────────────
 #  Helpers
-# ─────────────────────────────────────────────
 def require_admin():
     claims = get_jwt()
     if claims.get("role") not in ("super_admin", "admin"):
@@ -38,7 +36,6 @@ def _is_active(last_active_at):
 def _serialize_device(d):
     """Full serialisation: device + VIP + guardians + computed status."""
 
-    # ── VIP ──────────────────────────────────────────────────────────────────
     vip = None
     if d.vip:
         vip = {
@@ -48,7 +45,6 @@ def _serialize_device(d):
             "vip_image_url": d.vip.vip_image_url,
         }
 
-    # ── Guardians ─────────────────────────────────────────────────────────────
     guardians = []
     for link in d.guardian_links:
         g = link.guardian
@@ -103,9 +99,7 @@ def _serialize_invitation(i):
     }
 
 
-# ═════════════════════════════════════════════
 #  DEVICES
-# ═════════════════════════════════════════════
 
 @device_bp.route("/", methods=["GET"])
 @jwt_required()
@@ -199,9 +193,7 @@ def delete_device(device_id):
     return jsonify({"message": "Device deleted successfully."}), 200
 
 
-# ═════════════════════════════════════════════
 #  DEVICE LOGS
-# ═════════════════════════════════════════════
 
 @device_bp.route("/logs/", methods=["GET"])
 @jwt_required()
@@ -240,9 +232,7 @@ def list_device_logs(device_id):
     return jsonify([_serialize_log(l) for l in logs]), 200
 
 
-# ═════════════════════════════════════════════
 #  GUARDIAN INVITATIONS
-# ═════════════════════════════════════════════
 
 @device_bp.route("/invitations/", methods=["GET"])
 @jwt_required()

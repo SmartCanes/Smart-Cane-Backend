@@ -72,19 +72,107 @@ class Admin(db.Model):
 
     def __repr__(self):
         return f"<Admin {self.username}>"
-    
+
+
+class Notification(db.Model):
+    __tablename__ = "notifications_tbl"
+    __table_args__ = {"schema": "smart_cane_db"}
+
+    notification_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    audience = db.Column(
+        db.Enum(
+            "all_admins",
+            "super_admins",
+            name="notification_audience",
+            schema="smart_cane_db",
+        ),
+        nullable=False,
+        default="all_admins",
+        index=True,
+    )
+
+    type = db.Column(db.String(50), nullable=False, index=True)
+    title = db.Column(db.String(255), nullable=False)
+    body = db.Column(db.Text, nullable=True)
+
+    link_path = db.Column(db.String(255), nullable=True)  # frontend route e.g. /admins
+
+    related_concern_id = db.Column(db.Integer, nullable=True, index=True)
+    related_admin_id = db.Column(db.Integer, nullable=True, index=True)
+
+    created_at = db.Column(
+        db.TIMESTAMP,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+    reads = db.relationship(
+        "NotificationRead",
+        back_populates="notification",
+        lazy=True,
+        cascade="all, delete-orphan",
+    )
+
+    def to_dict(self):
+        return {
+            "notification_id": self.notification_id,
+            "audience": self.audience,
+            "type": self.type,
+            "title": self.title,
+            "body": self.body,
+            "link_path": self.link_path,
+            "related_concern_id": self.related_concern_id,
+            "related_admin_id": self.related_admin_id,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class NotificationRead(db.Model):
+    __tablename__ = "notification_reads_tbl"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "notification_id",
+            "admin_id",
+            name="uq_notification_read_notification_admin",
+        ),
+        {"schema": "smart_cane_db"},
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    notification_id = db.Column(
+        db.Integer,
+        db.ForeignKey("smart_cane_db.notifications_tbl.notification_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    admin_id = db.Column(
+        db.Integer,
+        db.ForeignKey("smart_cane_db.admin_tbl.admin_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    read_at = db.Column(
+        db.TIMESTAMP,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+    notification = db.relationship("Notification", back_populates="reads")
+    admin = db.relationship("Admin", lazy=True)
+
+
 class AdminArchive(db.Model):
-    """
-    Soft-delete archive for removed admin accounts.
-    Whenever a super_admin deletes an admin, the record is copied here
-    before being removed from admin_tbl.
-    """
+    # Deleted admin rows copied here before removal from admin_tbl.
     __tablename__ = "admin_archive_tbl"
     __table_args__ = {"schema": "smart_cane_db"}
  
     archive_id        = db.Column(db.Integer, primary_key=True, autoincrement=True)
  
-    # ── Original admin fields (copied verbatim) ───────────────────────────────
     admin_id          = db.Column(db.Integer,      nullable=False)   # original PK
     username          = db.Column(db.String(100),  nullable=False)
     email             = db.Column(db.String(255),  nullable=False)
@@ -101,7 +189,6 @@ class AdminArchive(db.Model):
     profile_image_url = db.Column(db.String(500),  nullable=True)
     original_created_at = db.Column(db.TIMESTAMP, nullable=True)
  
-    # ── Archive metadata ───────────────────────────────────────────────────────
     archived_at       = db.Column(
         db.TIMESTAMP,
         nullable=False,
@@ -558,3 +645,57 @@ class PushSubscription(db.Model):
 
     def __repr__(self):
         return f"<PushSubscription {self.guardian_id}>"
+
+class GuardianConcern(db.Model):
+    # Guardian contact form submissions (public submit; admins manage in panel).
+    __tablename__ = "guardian_concerns_tbl"
+    __table_args__ = {"schema": "smart_cane_db"}
+ 
+    concern_id  = db.Column(db.Integer, primary_key=True, autoincrement=True)
+ 
+
+    name        = db.Column(db.String(255), nullable=False)
+    email       = db.Column(db.String(255), nullable=False, index=True)
+    message     = db.Column(db.Text,        nullable=False)
+ 
+    status      = db.Column(
+        db.Enum("unread", "read", "resolved",
+                name="concern_status",
+                schema="smart_cane_db"),
+        nullable=False,
+        default="unread",
+        index=True,
+    )
+    admin_reply         = db.Column(db.Text,      nullable=True, default=None)
+    replied_by_admin_id = db.Column(db.Integer,   nullable=True, default=None)
+    replied_at          = db.Column(db.TIMESTAMP, nullable=True, default=None)
+ 
+    created_at  = db.Column(
+        db.TIMESTAMP,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+    updated_at  = db.Column(
+        db.TIMESTAMP,
+        nullable=False,
+        default=lambda:  datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+ 
+    def to_dict(self):
+        return {
+            "concern_id":          self.concern_id,
+            "name":                self.name,
+            "email":               self.email,
+            "message":             self.message,
+            "status":              self.status,
+            "admin_reply":         self.admin_reply,
+            "replied_by_admin_id": self.replied_by_admin_id,
+            "replied_at":          self.replied_at.isoformat() if self.replied_at else None,
+            "created_at":          self.created_at.isoformat() if self.created_at else None,
+            "updated_at":          self.updated_at.isoformat() if self.updated_at else None,
+        }
+ 
+    def __repr__(self):
+        return f"<GuardianConcern {self.concern_id} [{self.status}] from {self.email}>"
