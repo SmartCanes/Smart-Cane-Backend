@@ -17,15 +17,10 @@ def send_otp_email(recipient_email, otp_code, guardian_name=None):
         email_password = os.environ.get("MAIL_PASSWORD", "")
         sender_name = os.environ.get("MAIL_SENDER_NAME", "iCane Smart Cane")
 
-        # If no email credentials provided, fallback to console output
+        # If credentials are missing, fail explicitly so API can surface a real error.
         if not email_username or not email_password:
-            print("=" * 60)
-            print("OTP EMAIL (Console Output - Configure SMTP for real emails)")
-            print(f"TO: {recipient_email}")
-            print(f"OTP CODE: {otp_code}")
-            print(f"EXPIRES: 10 minutes")
-            print("=" * 60)
-            return True
+            print("OTP EMAIL failed: MAIL_USERNAME/MAIL_PASSWORD not configured")
+            return False
 
         # Create message
         msg = MIMEMultipart("alternative")
@@ -122,13 +117,7 @@ def send_otp_email(recipient_email, otp_code, guardian_name=None):
 
     except Exception as e:
         print(f"Failed to send OTP email to {recipient_email}: {str(e)}")
-        # Fallback to console output
-        print("=" * 60)
-        print("OTP EMAIL (Fallback - SMTP Failed)")
-        print(f"TO: {recipient_email}")
-        print(f"OTP CODE: {otp_code}")
-        print("=" * 60)
-        return True
+        return False
 
 
 def send_welcome_email(recipient_email, guardian_name):
@@ -164,18 +153,10 @@ def send_guardian_invite_email(
         email_password = os.environ.get("MAIL_PASSWORD", "")
         sender_name = os.environ.get("MAIL_SENDER_NAME", "iCane Smart Cane")
 
-        # Fallback to console output if no credentials
+        # If credentials are missing, fail explicitly so API can surface a real error.
         if not email_username or not email_password:
-            print("=" * 60)
-            print(
-                "GUARDIAN INVITE EMAIL (Console Output - Configure SMTP for real emails)"
-            )
-            print(f"TO: {recipient_email}")
-            print(f"VIP: {vip_name or '—'}")
-            print(f"Guardian Name: {guardian_name or '—'}")
-            print(f"Invite Link: {invite_link}")
-            print("=" * 60)
-            return True
+            print("GUARDIAN INVITE failed: MAIL_USERNAME/MAIL_PASSWORD not configured")
+            return False
 
         # Create message
         msg = MIMEMultipart("alternative")
@@ -259,12 +240,4 @@ def send_guardian_invite_email(
 
     except Exception as e:
         print(f"[EMAIL ERROR] Failed to send guardian invite to {recipient_email}: {e}")
-        # Fallback to console
-        print("=" * 60)
-        print("GUARDIAN INVITE EMAIL (Fallback - SMTP Failed)")
-        print(f"TO: {recipient_email}")
-        print(f"VIP: {vip_name or '—'}")
-        print(f"Guardian Name: {guardian_name or '—'}")
-        print(f"Invite Link: {invite_link}")
-        print("=" * 60)
-        return True
+        return False
