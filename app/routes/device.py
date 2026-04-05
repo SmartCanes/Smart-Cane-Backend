@@ -1,8 +1,9 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt
+from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from app import db
-from app.models import Device, DeviceLog, GuardianInvitation
+from app.models import Device, DeviceLog, GuardianInvitation, AdminAuditLog
 from datetime import datetime, timezone, timedelta
+import json
 
 device_bp = Blueprint("device", __name__)
 
@@ -183,11 +184,51 @@ def update_device(device_id):
 @device_bp.route("/<int:device_id>", methods=["DELETE"])
 @jwt_required()
 def delete_device(device_id):
-    """Delete a device. Super admin only."""
+    """Delete an unassigned device with required reason. Super admin only."""
     err = require_super_admin()
     if err:
         return err
+
+    data = request.get_json(silent=True) or {}
+    reason_code = str(data.get("reason_code", "")).strip()
+    reason_text = str(data.get("reason_text", "")).strip()
+
+    if not reason_code:
+        return jsonify({"message": "reason_code is required."}), 400
+    if len(reason_text) < 10:
+        return jsonify({"message": "reason_text is required and must be at least 10 characters."}), 400
+
     d = Device.query.get_or_404(device_id)
+
+    if d.is_paired:
+        return jsonify({"message": "Paired devices cannot be deleted."}), 400
+
+    if d.vip_id is not None or len(d.guardian_links or []) > 0:
+        return jsonify({"message": "Only unassigned devices can be deleted."}), 400
+
+    actor_id = int(get_jwt_identity())
+
+    db.session.add(
+        AdminAuditLog(
+            actor_admin_id=actor_id,
+            action_type="device_delete",
+            old_value_json=json.dumps(
+                {
+                    "deleted_device_id": d.device_id,
+                    "deleted_device_serial": d.device_serial_number,
+                    "is_paired": bool(d.is_paired),
+                    "vip_id": d.vip_id,
+                }
+            ),
+            new_value_json=None,
+            reason_code=reason_code,
+            reason_text=reason_text,
+            status="success",
+            ip_address=request.headers.get("X-Forwarded-For", request.remote_addr),
+            user_agent=(request.user_agent.string or "")[:255],
+        )
+    )
+
     db.session.delete(d)
     db.session.commit()
     return jsonify({"message": "Device deleted successfully."}), 200

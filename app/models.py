@@ -258,6 +258,10 @@ class AdminAuditLog(db.Model):
             parsed_old_value.get("message")
             or parsed_old_value.get("deleted_concern_message")
         )
+        deleted_device_serial = (
+            parsed_old_value.get("deleted_device_serial")
+            or parsed_old_value.get("device_serial_number")
+        )
 
         return {
             "audit_id": self.audit_id,
@@ -274,6 +278,7 @@ class AdminAuditLog(db.Model):
             "user_agent": self.user_agent,
             "deleted_admin_name": deleted_admin_name,
             "deleted_concern_message": deleted_concern_message,
+            "deleted_device_serial": deleted_device_serial,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
