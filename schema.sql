@@ -634,3 +634,26 @@ INSERT IGNORE INTO reason_catalog_tbl (action_type, reason_code, reason_label) V
 ('device_delete', 'hardware_replacement', 'Hardware Replacement'),
 ('device_delete', 'inventory_cleanup', 'Inventory Cleanup'),
 ('device_delete', 'other', 'Other');
+
+CREATE TABLE guardian_settings_tbl (
+    settings_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    guardian_id INT NOT NULL,
+
+    allow_location TINYINT(1) NOT NULL DEFAULT 1,
+    push_notifications TINYINT(1) NOT NULL DEFAULT 1,
+    email_notifications TINYINT(1) NOT NULL DEFAULT 1,
+    sms_alerts TINYINT(1) NOT NULL DEFAULT 0,
+    two_factor_enabled TINYINT(1) NOT NULL DEFAULT 0,
+
+    updated_at TIMESTAMP NOT NULL 
+        DEFAULT CURRENT_TIMESTAMP 
+        ON UPDATE CURRENT_TIMESTAMP,
+
+    CONSTRAINT uq_guardian_settings_guardian
+        UNIQUE (guardian_id),
+
+    CONSTRAINT fk_guardian_settings_guardian
+        FOREIGN KEY (guardian_id) REFERENCES guardian_tbl(guardian_id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE
+) ENGINE=InnoDB;
