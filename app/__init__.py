@@ -22,7 +22,15 @@ def create_app():
 
     db.init_app(app)
     jwt.init_app(app)
-    CORS(app, origins=os.getenv("FRONTEND_URL", "http://localhost:5173"), supports_credentials=True)
+    raw_origins = os.getenv("FRONTEND_URL", "http://localhost:5173,http://localhost:5174")
+    allowed_origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+    CORS(
+        app,
+        origins=allowed_origins,
+        supports_credentials=True,
+        allow_headers=["Content-Type", "Authorization"],
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    )
 
     @app.route("/static/uploads/profiles/<filename>")
     def serve_profile_image(filename: str):
@@ -38,6 +46,7 @@ def create_app():
     from app.routes.emergency import emergency_bp
     from app.routes.concerns import concerns_bp
     from app.routes.notifications import notifications_bp
+    from app.routes.restore import restore_bp
 
     app.register_blueprint(concerns_bp)
     app.register_blueprint(auth_bp,     url_prefix="/api/auth")
@@ -47,6 +56,7 @@ def create_app():
     app.register_blueprint(device_bp,   url_prefix="/api/devices")
     app.register_blueprint(emergency_bp, url_prefix="/api/emergency-logs")
     app.register_blueprint(notifications_bp)
+    app.register_blueprint(restore_bp)
 
     with app.app_context():
         db.create_all()

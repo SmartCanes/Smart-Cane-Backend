@@ -199,6 +199,55 @@ class AdminArchive(db.Model):
     def __repr__(self):
         return f"<AdminArchive admin_id={self.admin_id} username={self.username}>"
 
+
+class AdminAuditLog(db.Model):
+    __tablename__ = "admin_audit_logs_tbl"
+    __table_args__ = {"schema": "smart_cane_db"}
+
+    audit_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    actor_admin_id = db.Column(
+        db.Integer,
+        db.ForeignKey("smart_cane_db.admin_tbl.admin_id"),
+        nullable=False,
+        index=True,
+    )
+    target_admin_id = db.Column(
+        db.Integer,
+        db.ForeignKey("smart_cane_db.admin_tbl.admin_id"),
+        nullable=True,
+        index=True,
+    )
+
+    action_type = db.Column(db.String(100), nullable=False, index=True)
+    old_value_json = db.Column(db.Text, nullable=True)
+    new_value_json = db.Column(db.Text, nullable=True)
+
+    reason_code = db.Column(db.String(100), nullable=True)
+    reason_text = db.Column(db.Text, nullable=True)
+
+    status = db.Column(
+        db.Enum("success", "failed", name="audit_status", schema="smart_cane_db"),
+        nullable=False,
+        default="success",
+        index=True,
+    )
+
+    ip_address = db.Column(db.String(64), nullable=True)
+    user_agent = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(
+        db.TIMESTAMP,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+    actor_admin = db.relationship("Admin", foreign_keys=[actor_admin_id], lazy=True)
+    target_admin = db.relationship("Admin", foreign_keys=[target_admin_id], lazy=True)
+
+    def __repr__(self):
+        return f"<AdminAuditLog {self.action_type} by {self.actor_admin_id}>"
+
 class GuardianInvitation(db.Model):
     __tablename__ = "guardian_invitations"
     __table_args__ = {"schema": "smart_cane_db"}
