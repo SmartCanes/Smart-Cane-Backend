@@ -282,6 +282,9 @@ def update_admin(target_id):
     )
     db.session.commit()
     return jsonify({"message": "Admin updated successfully."}), 200
+
+
+@admin_bp.route("/<int:target_id>/delete", methods=["DELETE"])
 @jwt_required()
 def delete_admin(target_id):
     # Archive row then delete from admin_tbl.
