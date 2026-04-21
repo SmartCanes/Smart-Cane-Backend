@@ -450,6 +450,7 @@ def list_audit_logs():
                 "reason_code": row.reason_code,
                 "reason_text": row.reason_text,
                 "status": row.status,
+                "is_restorable": row.action_type in {"admin_delete", "concern_delete", "device_delete", "device_deleted"} and row.status == "success",
                 "created_at": created_at.isoformat().replace("+00:00", "Z") if created_at else None,
                 "deleted_admin_name": deleted_admin_name,
                 "deleted_concern_message": deleted_concern_message,

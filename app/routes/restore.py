@@ -248,6 +248,8 @@ def restore_from_audit(audit_id):
 		if error_message:
 			return jsonify({"message": error_message}), error_status
 
+		audit.status = "restored"
+
 		_log_restore_action(
 			actor_id=actor_id,
 			action_type=result_payload["restored_action_type"],
