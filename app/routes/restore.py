@@ -117,44 +117,27 @@ def _restore_deleted_admin(old_payload):
 	}, None, None
 
 
-def _restore_deleted_concern(old_payload):
-	concern_id = old_payload.get("concern_id")
+def _restore_deleted_concern(old_payload, audit=None):
+	concern_id = (
+		(audit.target_concern_id if audit else None)
+		or old_payload.get("concern_id")
+	)
 	if not concern_id:
-		return None, "Missing concern_id in audit payload.", 400
+		return None, "Missing concern_id in audit record.", 400
 
 	concern = GuardianConcern.query.get(int(concern_id))
-
-	if concern and not concern.is_deleted:
+	if not concern:
+		return None, "Concern record not found.", 404
+	if not concern.is_deleted:
 		return None, "Concern is already active.", 409
 
-	if concern:
-		concern.is_deleted = False
-		concern.deleted_at = None
-		concern.deleted_by_admin_id = None
-		concern.deleted_reason_code = None
-		concern.deleted_reason_text = None
-		concern.updated_at = datetime.now(timezone.utc)
-		restored_concern = concern
-	else:
-		status = str(old_payload.get("status") or "unread").strip().lower()
-		if status not in CONCERN_STATUS_OPTIONS:
-			status = "unread"
-
-		restored_concern = GuardianConcern(
-			concern_id=int(concern_id),
-			name=str(old_payload.get("name") or "Unknown").strip() or "Unknown",
-			email=str(old_payload.get("email") or "unknown@example.com").strip() or "unknown@example.com",
-			message=str(old_payload.get("message") or "Restored concern without original message.").strip()
-			or "Restored concern without original message.",
-			status=status,
-			process_stage="resolved" if status == "resolved" else "new",
-			is_deleted=False,
-		)
-		db.session.add(restored_concern)
+	concern.is_deleted = False
+	concern.deleted_at = None
+	concern.deleted_by_admin_id = None
 
 	return {
 		"restored_action_type": "concern_restore",
-		"restored_concern_id": restored_concern.concern_id,
+		"restored_concern_id": concern.concern_id,
 	}, None, None
 
 
@@ -256,7 +239,7 @@ def restore_from_audit(audit_id):
 		if audit.action_type == "admin_delete":
 			result_payload, error_message, error_status = _restore_deleted_admin(old_payload)
 		elif audit.action_type == "concern_delete":
-			result_payload, error_message, error_status = _restore_deleted_concern(old_payload)
+			result_payload, error_message, error_status = _restore_deleted_concern(old_payload, audit)
 		elif audit.action_type in DEVICE_DELETE_ACTIONS:
 			result_payload, error_message, error_status = _restore_deleted_device(old_payload)
 		else:

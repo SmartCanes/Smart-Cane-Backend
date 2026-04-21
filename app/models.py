@@ -696,14 +696,13 @@ class GuardianConcern(db.Model):
     # Guardian contact form submissions (public submit; admins manage in panel).
     __tablename__ = "guardian_concerns_tbl"
     __table_args__ = {"schema": "smart_cane_db"}
- 
+
     concern_id  = db.Column(db.Integer, primary_key=True, autoincrement=True)
- 
 
     name        = db.Column(db.String(255), nullable=False)
     email       = db.Column(db.String(255), nullable=False, index=True)
     message     = db.Column(db.Text,        nullable=False)
- 
+
     status      = db.Column(
         db.Enum("unread", "read", "resolved",
                 name="concern_status",
@@ -715,7 +714,11 @@ class GuardianConcern(db.Model):
     admin_reply         = db.Column(db.Text,      nullable=True, default=None)
     replied_by_admin_id = db.Column(db.Integer,   nullable=True, default=None)
     replied_at          = db.Column(db.TIMESTAMP, nullable=True, default=None)
- 
+
+    is_deleted          = db.Column(db.Boolean,   nullable=False, default=False, index=True)
+    deleted_at          = db.Column(db.TIMESTAMP, nullable=True,  default=None)
+    deleted_by_admin_id = db.Column(db.Integer,   nullable=True,  default=None)
+
     created_at  = db.Column(
         db.TIMESTAMP,
         nullable=False,
@@ -728,7 +731,7 @@ class GuardianConcern(db.Model):
         default=lambda:  datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
- 
+
     def to_dict(self):
         return {
             "concern_id":          self.concern_id,
@@ -742,6 +745,6 @@ class GuardianConcern(db.Model):
             "created_at":          self.created_at.isoformat() if self.created_at else None,
             "updated_at":          self.updated_at.isoformat() if self.updated_at else None,
         }
- 
+
     def __repr__(self):
         return f"<GuardianConcern {self.concern_id} [{self.status}] from {self.email}>"

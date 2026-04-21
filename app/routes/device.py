@@ -178,6 +178,8 @@ def update_device(device_id):
     d = Device.query.get_or_404(device_id)
     data = request.get_json(silent=True) or {}
 
+    old_serial = d.device_serial_number
+
     new_serial = data.get("device_serial_number", "").strip()
     if new_serial and new_serial != d.device_serial_number:
         clash = Device.query.filter_by(device_serial_number=new_serial).first()
@@ -186,6 +188,15 @@ def update_device(device_id):
         d.device_serial_number = new_serial
 
     d.updated_at = datetime.now(timezone.utc)
+
+    log_audit(
+        actor_admin_id=int(get_jwt_identity()),
+        action_type="device_update",
+        reason_code="device_update",
+        reason_text=f"Device {device_id} updated.",
+        old_value={"device_serial_number": old_serial},
+        new_value={"device_serial_number": d.device_serial_number},
+    )
     db.session.commit()
     return jsonify({"message": "Device updated successfully.", "device": _serialize_device(d)}), 200
 

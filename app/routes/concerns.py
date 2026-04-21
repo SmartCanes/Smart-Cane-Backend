@@ -54,13 +54,9 @@ def super_admin_required(f):
 @concerns_bp.route("/", methods=["GET"])
 @admin_required
 def get_concerns():
-    """
-    Returns all guardian concerns, optionally filtered by status.
-    Query parameter: ?status=unread|read|resolved
-    """
     try:
         status = request.args.get("status")
-        query = GuardianConcern.query
+        query = GuardianConcern.query.filter_by(is_deleted=False)
         if status and status in ["unread", "read", "resolved"]:
             query = query.filter_by(status=status)
         concerns = query.order_by(GuardianConcern.created_at.desc()).all()
@@ -74,15 +70,8 @@ def get_concerns():
 @concerns_bp.route("/<int:concern_id>", methods=["PATCH"])
 @admin_required
 def update_concern(concern_id):
-    """
-    Update status and optionally admin_reply.
-    Expected JSON: {
-        "status": "unread|read|resolved",
-        "admin_reply": "optional reply text"
-    }
-    """
     try:
-        concern = GuardianConcern.query.get(concern_id)
+        concern = GuardianConcern.query.filter_by(concern_id=concern_id, is_deleted=False).first()
         if not concern:
             return jsonify({"error": "Concern not found"}), 404
 
@@ -158,20 +147,18 @@ def update_concern(concern_id):
 @concerns_bp.route("/<int:concern_id>", methods=["DELETE"])
 @super_admin_required
 def delete_concern(concern_id):
-    """
-    Delete a guardian concern (permanently). Super admin only.
-    """
     try:
         data = request.get_json(silent=True) or {}
         reason_code = str(data.get("reason_code", "")).strip() or "other"
         reason_text = str(data.get("reason_text", "")).strip() or "Deleted by admin."
 
-        concern = GuardianConcern.query.get(concern_id)
+        concern = GuardianConcern.query.filter_by(concern_id=concern_id, is_deleted=False).first()
         if not concern:
             return jsonify({"error": "Concern not found"}), 404
 
-        old_snapshot = concern.to_dict()
-        db.session.delete(concern)
+        concern.is_deleted = True
+        concern.deleted_at = datetime.now(timezone.utc)
+        concern.deleted_by_admin_id = g.current_admin.admin_id
 
         log_audit(
             actor_admin_id=g.current_admin.admin_id,
@@ -179,7 +166,6 @@ def delete_concern(concern_id):
             reason_code=reason_code,
             reason_text=reason_text,
             target_concern_id=concern_id,
-            old_value=old_snapshot,
         )
         db.session.commit()
         return jsonify({"message": "Concern deleted successfully"})
