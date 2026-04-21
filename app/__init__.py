@@ -22,7 +22,9 @@ def create_app():
 
     db.init_app(app)
     jwt.init_app(app)
-    raw_origins = os.getenv("FRONTEND_URL", "http://localhost:5173,http://localhost:5174")
+    raw_origins = os.getenv(
+        "ADMIN_FRONTEND_URL", "http://localhost:5173,http://localhost:5174"
+    )
     allowed_origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
     CORS(
         app,
