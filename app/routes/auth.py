@@ -4,6 +4,7 @@ from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identi
 from app import db
 from app.models import Admin, AdminArchive, LoginAttempt, OTP
 from app.utils.admin_email_service import send_admin_otp_email
+from app.utils.audit import log_audit
 from datetime import datetime, timezone, timedelta
 import random, string
 
@@ -86,7 +87,24 @@ def login():
         return jsonify({"message": "Invalid credentials."}), 401
 
     if not _check_password(admin.password, password):
+        log_audit(
+            actor_admin_id=admin.admin_id,
+            action_type="login",
+            reason_code="failed_login",
+            reason_text="Invalid password attempt.",
+            status="failed",
+            failure_message="Invalid credentials.",
+        )
+        db.session.commit()
         return jsonify({"message": "Invalid credentials."}), 401
+
+    log_audit(
+        actor_admin_id=admin.admin_id,
+        action_type="login",
+        reason_code="admin_login",
+        reason_text="Admin logged in.",
+    )
+    db.session.commit()
 
     access_token = create_access_token(
         identity=str(admin.admin_id),
@@ -233,5 +251,11 @@ def password_reset_reset():
     otp.is_used = True
     otp.used_at = datetime.now(timezone.utc)
 
+    log_audit(
+        actor_admin_id=admin.admin_id,
+        action_type="password_reset",
+        reason_code="password_reset",
+        reason_text="Admin reset their password via OTP.",
+    )
     db.session.commit()
     return jsonify({"message": "Password updated successfully."}), 200

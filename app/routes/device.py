@@ -3,6 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from app import db
 from app.models import Device, DeviceLog, GuardianInvitation, AdminAuditLog, Admin
 from app.routes.notifications import create_notification
+from app.utils.audit import log_audit
 from datetime import datetime, timezone, timedelta
 import json
 
@@ -139,6 +140,15 @@ def create_device():
     db.session.add(device)
     db.session.commit()
 
+    log_audit(
+        actor_admin_id=int(get_jwt_identity()),
+        action_type="device_create",
+        reason_code="device_create",
+        reason_text=f"Device {serial} registered.",
+        new_value={"device_id": device.device_id, "device_serial_number": serial},
+    )
+    db.session.commit()
+
     actor = Admin.query.get(int(get_jwt_identity()))
     actor_name = (
         f"{(actor.first_name or '').strip()} {(actor.last_name or '').strip()}".strip()
@@ -208,26 +218,17 @@ def delete_device(device_id):
 
     deleted_serial = d.device_serial_number
 
-    db.session.add(
-        AdminAuditLog(
-            actor_admin_id=actor_id,
-            target_admin_id=None,
-            action_type="device_delete",
-            old_value_json=json.dumps(
-                {
-                    "deleted_device_id": d.device_id,
-                    "deleted_device_serial": d.device_serial_number,
-                    "is_paired": bool(d.is_paired),
-                    "vip_id": d.vip_id,
-                }
-            ),
-            new_value_json=None,
-            reason_code=reason_code,
-            reason_text=reason_text,
-            status="success",
-            ip_address=request.headers.get("X-Forwarded-For", request.remote_addr),
-            user_agent=(request.user_agent.string or "")[:255],
-        )
+    log_audit(
+        actor_admin_id=actor_id,
+        action_type="device_delete",
+        reason_code=reason_code,
+        reason_text=reason_text,
+        old_value={
+            "deleted_device_id": d.device_id,
+            "deleted_device_serial": d.device_serial_number,
+            "is_paired": bool(d.is_paired),
+            "vip_id": d.vip_id,
+        },
     )
 
     db.session.delete(d)

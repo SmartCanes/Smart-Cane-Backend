@@ -3,6 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
 from app.models import GuardianConcern, Admin
 from app.models import Notification, NotificationRead
+from app.utils.audit import log_audit
 from datetime import datetime, timezone
 import logging
 from sqlalchemy import and_
@@ -113,6 +114,16 @@ def update_concern(concern_id):
 
         db.session.commit()
 
+        log_audit(
+            actor_admin_id=g.current_admin.admin_id,
+            action_type="concern_update",
+            reason_code="concern_update",
+            reason_text=f"Concern #{concern_id} updated.",
+            target_concern_id=concern_id,
+            new_value={k: data[k] for k in ("status", "admin_reply") if k in data},
+        )
+        db.session.commit()
+
         # Keep notification read-state in sync for the current admin
         if concern.status in ("read", "resolved"):
             n = Notification.query.filter(
@@ -151,11 +162,25 @@ def delete_concern(concern_id):
     Delete a guardian concern (permanently). Super admin only.
     """
     try:
+        data = request.get_json(silent=True) or {}
+        reason_code = str(data.get("reason_code", "")).strip() or "other"
+        reason_text = str(data.get("reason_text", "")).strip() or "Deleted by admin."
+
         concern = GuardianConcern.query.get(concern_id)
         if not concern:
             return jsonify({"error": "Concern not found"}), 404
 
+        old_snapshot = concern.to_dict()
         db.session.delete(concern)
+
+        log_audit(
+            actor_admin_id=g.current_admin.admin_id,
+            action_type="concern_delete",
+            reason_code=reason_code,
+            reason_text=reason_text,
+            target_concern_id=concern_id,
+            old_value=old_snapshot,
+        )
         db.session.commit()
         return jsonify({"message": "Concern deleted successfully"})
 

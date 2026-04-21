@@ -8,6 +8,7 @@ from sqlalchemy import func
 from app import db
 from app.models import Admin, AdminArchive, AdminAuditLog, Device, GuardianConcern
 from app.routes.notifications import create_notification
+from app.utils.audit import log_audit
 
 
 restore_bp = Blueprint("restore", __name__, url_prefix="/api/admin/audit-logs")
@@ -48,18 +49,13 @@ def _default_restore_reason(payload):
 
 
 def _log_restore_action(actor_id, action_type, old_payload, new_payload, reason_code, reason_text):
-	db.session.add(
-		AdminAuditLog(
-			actor_admin_id=actor_id,
-			action_type=action_type,
-			old_value_json=json.dumps(old_payload),
-			new_value_json=json.dumps(new_payload),
-			reason_code=reason_code,
-			reason_text=reason_text,
-			status="success",
-			ip_address=request.headers.get("X-Forwarded-For", request.remote_addr),
-			user_agent=(request.user_agent.string or "")[:255],
-		)
+	log_audit(
+		actor_admin_id=actor_id,
+		action_type=action_type,
+		reason_code=reason_code,
+		reason_text=reason_text,
+		old_value=old_payload,
+		new_value=new_payload,
 	)
 
 

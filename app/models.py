@@ -201,10 +201,10 @@ class AdminArchive(db.Model):
 
 
 class AdminAuditLog(db.Model):
-    __tablename__ = "admin_audit_logs_tbl"
+    __tablename__ = "admin_audit_log_tbl"
     __table_args__ = {"schema": "smart_cane_db"}
 
-    audit_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    audit_id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
 
     actor_admin_id = db.Column(
         db.Integer,
@@ -218,22 +218,19 @@ class AdminAuditLog(db.Model):
         nullable=True,
         index=True,
     )
+    target_concern_id = db.Column(db.Integer, nullable=True, index=True)
 
-    action_type = db.Column(db.String(100), nullable=False, index=True)
+    action_type = db.Column(db.String(50), nullable=False, index=True)
     old_value_json = db.Column(db.Text, nullable=True)
     new_value_json = db.Column(db.Text, nullable=True)
 
-    reason_code = db.Column(db.String(100), nullable=True)
-    reason_text = db.Column(db.Text, nullable=True)
+    reason_code = db.Column(db.String(50), nullable=False, default="system")
+    reason_text = db.Column(db.String(500), nullable=False, default="")
 
-    status = db.Column(
-        db.Enum("success", "failed", name="audit_status", schema="smart_cane_db"),
-        nullable=False,
-        default="success",
-        index=True,
-    )
+    status = db.Column(db.String(20), nullable=False, default="success")
+    failure_message = db.Column(db.String(255), nullable=True)
 
-    ip_address = db.Column(db.String(64), nullable=True)
+    ip_address = db.Column(db.String(45), nullable=True)
     user_agent = db.Column(db.String(255), nullable=True)
     created_at = db.Column(
         db.TIMESTAMP,

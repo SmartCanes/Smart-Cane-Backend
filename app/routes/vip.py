@@ -1,7 +1,8 @@
 from flask import Blueprint, jsonify
-from flask_jwt_extended import jwt_required, get_jwt
+from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from app import db
 from app.models import VIP
+from app.utils.audit import log_audit
 
 vip_bp = Blueprint("vip", __name__)
 
@@ -94,6 +95,18 @@ def delete_vip(vip_id):
     if err:
         return err
     v = VIP.query.get_or_404(vip_id)
+    old_snapshot = {
+        "vip_id": v.vip_id,
+        "first_name": v.first_name,
+        "last_name": v.last_name,
+    }
     db.session.delete(v)
+    log_audit(
+        actor_admin_id=int(get_jwt_identity()),
+        action_type="vip_delete",
+        reason_code="vip_delete",
+        reason_text=f"VIP {v.first_name} {v.last_name} deleted.",
+        old_value=old_snapshot,
+    )
     db.session.commit()
     return jsonify({"message": "VIP deleted successfully."}), 200

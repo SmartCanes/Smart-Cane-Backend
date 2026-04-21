@@ -9,6 +9,7 @@ from app import db
 from app.models import Admin, AdminArchive, AdminAuditLog, OTP
 from app.routes.notifications import create_notification
 from app.utils.admin_email_service import send_admin_otp_email, send_admin_invite_email
+from app.utils.audit import log_audit
 from datetime import datetime, timezone, timedelta
 import random, string
 from sqlalchemy import or_
@@ -159,6 +160,21 @@ def create_admin():
     db.session.add(new_admin)
     db.session.commit()
 
+    log_audit(
+        actor_admin_id=int(get_jwt_identity()),
+        action_type="admin_create",
+        reason_code="admin_create",
+        reason_text=f"Created admin account for {new_admin.email}.",
+        target_admin_id=new_admin.admin_id,
+        new_value={
+            "admin_id": new_admin.admin_id,
+            "username": new_admin.username,
+            "email": new_admin.email,
+            "role": new_admin.role,
+        },
+    )
+    db.session.commit()
+
     frontend_urls = os.getenv("FRONTEND_URL", "http://localhost:5174")
     login_base = frontend_urls.split(",")[0].strip() or "http://localhost:5174"
     login_link = f"{login_base.rstrip('/')}/login"
@@ -214,6 +230,15 @@ def update_admin(target_id):
         if clash and clash.admin_id != target_id:
             return jsonify({"message": "Email already taken."}), 409
 
+    old_role = target.role
+    old_snapshot = {
+        "username": target.username,
+        "email": target.email,
+        "first_name": target.first_name,
+        "last_name": target.last_name,
+        "role": target.role,
+    }
+
     target.first_name     = data.get("first_name",     target.first_name).strip()
     target.middle_name    = data.get("middle_name",     target.middle_name or "").strip() or None
     target.last_name      = data.get("last_name",       target.last_name).strip()
@@ -233,10 +258,30 @@ def update_admin(target_id):
         target.is_first_login = True    # force the admin to go through first-login flow again
 
     db.session.commit()
+
+    new_role = target.role
+    action = "role_change" if new_role != old_role else "admin_update"
+    log_audit(
+        actor_admin_id=int(get_jwt_identity()),
+        action_type=action,
+        reason_code="admin_update" if action == "admin_update" else "role_change",
+        reason_text=(
+            f"Role changed from {old_role} to {new_role}."
+            if action == "role_change"
+            else f"Admin {target.email} profile updated."
+        ),
+        target_admin_id=target_id,
+        old_value=old_snapshot,
+        new_value={
+            "username": target.username,
+            "email": target.email,
+            "first_name": target.first_name,
+            "last_name": target.last_name,
+            "role": target.role,
+        },
+    )
+    db.session.commit()
     return jsonify({"message": "Admin updated successfully."}), 200
-
-
-@admin_bp.route("/<int:target_id>/delete", methods=["DELETE"])
 @jwt_required()
 def delete_admin(target_id):
     # Archive row then delete from admin_tbl.
@@ -286,28 +331,22 @@ def delete_admin(target_id):
     )
     db.session.add(archive)
 
-    db.session.add(
-        AdminAuditLog(
-            actor_admin_id=caller_id,
-            target_admin_id=None,
-            action_type="admin_delete",
-            old_value_json=json.dumps({
-                "deleted_admin_id": target.admin_id,
-                "full_name": " ".join(
-                    p for p in [target.first_name, target.middle_name, target.last_name] if p
-                ).strip(),
-                "username": target.username,
-                "email": target.email,
-                "role": target.role,
-                "was_first_login": bool(target.is_first_login),
-            }),
-            new_value_json=None,
-            reason_code=reason_code,
-            reason_text=reason_text,
-            status="success",
-            ip_address=request.headers.get("X-Forwarded-For", request.remote_addr),
-            user_agent=(request.user_agent.string or "")[:255],
-        )
+    log_audit(
+        actor_admin_id=caller_id,
+        action_type="admin_delete",
+        reason_code=reason_code,
+        reason_text=reason_text,
+        target_admin_id=None,
+        old_value={
+            "deleted_admin_id": target.admin_id,
+            "full_name": " ".join(
+                p for p in [target.first_name, target.middle_name, target.last_name] if p
+            ).strip(),
+            "username": target.username,
+            "email": target.email,
+            "role": target.role,
+            "was_first_login": bool(target.is_first_login),
+        },
     )
 
     db.session.delete(target)
@@ -557,6 +596,15 @@ def update_profile():
     admin.updated_at     = datetime.now(timezone.utc)
     db.session.commit()
 
+    log_audit(
+        actor_admin_id=admin_id,
+        action_type="profile_update",
+        reason_code="profile_update",
+        reason_text="Admin updated their own profile.",
+        target_admin_id=admin_id,
+    )
+    db.session.commit()
+
     return jsonify({"message": "Profile updated successfully."}), 200
 
 
@@ -670,6 +718,15 @@ def verify_email_otp():
     otp.used_at      = datetime.now(timezone.utc)
     admin.email      = new_email
     admin.updated_at = datetime.now(timezone.utc)
+    db.session.commit()
+
+    log_audit(
+        actor_admin_id=admin_id,
+        action_type="email_change",
+        reason_code="email_change",
+        reason_text=f"Admin changed email to {new_email}.",
+        target_admin_id=admin_id,
+    )
     db.session.commit()
 
     return jsonify({"message": "Email updated successfully."}), 200
