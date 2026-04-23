@@ -314,43 +314,61 @@ def delete_admin(target_id):
     ).strip() or target.username
 
     archive = AdminArchive(
-        admin_id            = target.admin_id,
-        username            = target.username,
-        email               = target.email,
-        password            = target.password,
-        first_name          = target.first_name,
-        middle_name         = target.middle_name,
-        last_name           = target.last_name,
-        contact_number      = target.contact_number,
-        province            = target.province,
-        city                = target.city,
-        barangay            = target.barangay,
-        street_address      = target.street_address,
-        role                = target.role,
-        profile_image_url   = target.profile_image_url,
-        original_created_at = target.created_at,
-        archived_at         = datetime.now(timezone.utc),
-        archived_by         = caller_id,
+        admin_id             = target.admin_id,
+        username             = target.username,
+        email                = target.email,
+        password             = target.password,
+        first_name           = target.first_name,
+        middle_name          = target.middle_name,
+        last_name            = target.last_name,
+        contact_number       = target.contact_number,
+        province             = target.province,
+        city                 = target.city,
+        barangay             = target.barangay,
+        street_address       = target.street_address,
+        role                 = target.role,
+        profile_image_url    = target.profile_image_url,
+        original_created_at  = target.created_at,
+        archived_at          = datetime.now(timezone.utc),
+        archived_by          = caller_id,
     )
     db.session.add(archive)
 
+    # Snapshot the admin data BEFORE deletion for the audit log old_value.
+    deleted_admin_id  = target.admin_id
+    deleted_full_name = " ".join(
+        p for p in [target.first_name, target.middle_name, target.last_name] if p
+    ).strip()
+    deleted_username  = target.username
+    deleted_email     = target.email
+    deleted_role      = target.role
+    deleted_first_login = bool(target.is_first_login)
+
+    # Commit archive FIRST so it is always persisted even if the delete fails.
+    db.session.commit()
+
+    # Write the audit log WITHOUT target_admin_id — the FK points at admin_tbl
+    # and the row is about to be hard-deleted, which would cause an FK violation
+    # on databases that enforce referential integrity (e.g. MySQL InnoDB).
+    # The deleted admin's identity is fully captured in old_value_json instead.
     log_audit(
         actor_admin_id=caller_id,
         action_type="admin_delete",
         reason_code=reason_code,
         reason_text=reason_text,
-        target_admin_id=None,
+        target_admin_id=None,   # intentionally NULL — admin is being hard-deleted
         old_value={
-            "deleted_admin_id": target.admin_id,
-            "full_name": " ".join(
-                p for p in [target.first_name, target.middle_name, target.last_name] if p
-            ).strip(),
-            "username": target.username,
-            "email": target.email,
-            "role": target.role,
-            "was_first_login": bool(target.is_first_login),
+            "deleted_admin_id": deleted_admin_id,
+            "full_name": deleted_full_name,
+            "username": deleted_username,
+            "email": deleted_email,
+            "role": deleted_role,
+            "was_first_login": deleted_first_login,
         },
     )
+    # Commit the audit log entry in its own transaction so it is persisted
+    # even if the subsequent DELETE raises an exception.
+    db.session.commit()
 
     db.session.delete(target)
     db.session.commit()
@@ -425,6 +443,7 @@ def list_audit_logs():
             or old_data.get("username")
             or ""
         )
+        # Support both the legacy "message" key and the new "deleted_concern_message" key
         deleted_concern_message = (
             old_data.get("deleted_concern_message")
             or old_data.get("message")
@@ -440,17 +459,26 @@ def list_audit_logs():
         if created_at and created_at.tzinfo is None:
             created_at = created_at.replace(tzinfo=timezone.utc)
 
+        # A row is restorable when it is a delete action that succeeded and has
+        # not yet been restored (status == "success").  Once restored the status
+        # becomes "restored" and the Restore button should disappear.
+        is_restorable = (
+            row.action_type in {"admin_delete", "concern_delete", "device_delete", "device_deleted"}
+            and row.status == "success"
+        )
+
         items.append(
             {
                 "audit_id": row.audit_id,
                 "actor_admin_id": row.actor_admin_id,
                 "target_admin_id": row.target_admin_id,
+                "target_concern_id": row.target_concern_id,
                 "actor_name": actor_name,
                 "action_type": row.action_type,
                 "reason_code": row.reason_code,
                 "reason_text": row.reason_text,
                 "status": row.status,
-                "is_restorable": row.action_type in {"admin_delete", "concern_delete", "device_delete", "device_deleted"} and row.status == "success",
+                "is_restorable": is_restorable,
                 "created_at": created_at.isoformat().replace("+00:00", "Z") if created_at else None,
                 "deleted_admin_name": deleted_admin_name,
                 "deleted_concern_message": deleted_concern_message,

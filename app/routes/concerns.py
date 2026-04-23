@@ -12,6 +12,17 @@ logger = logging.getLogger(__name__)
 
 concerns_bp = Blueprint("concerns", __name__, url_prefix="/api/guardian-concerns")
 
+ALLOWED_PROCESS_STAGES = {
+    "new",
+    "acknowledged",
+    "ongoing",
+    "awaiting_client",
+    "escalated",
+    "resolved",
+    "failed_to_resolve",
+}
+PROCESS_STAGES_REQUIRING_REMARKS = {"escalated", "failed_to_resolve"}
+
 
 # Helper: get current admin from JWT
 def get_current_admin():
@@ -79,18 +90,22 @@ def update_concern(concern_id):
         if not data:
             return jsonify({"error": "Invalid request body"}), 400
 
+        audit_new_value = {}
+
         # Update status if provided
         if "status" in data:
             new_status = data["status"]
             if new_status not in ("unread", "read", "resolved"):
                 return jsonify({"error": "Invalid status"}), 400
             concern.status = new_status
+            audit_new_value["status"] = new_status
 
         # Update admin reply if provided
         if "admin_reply" in data:
+            reply_text = str(data["admin_reply"] or "").strip()
             # Only set reply metadata if the reply text is actually provided
-            if data["admin_reply"]:
-                concern.admin_reply = data["admin_reply"]
+            if reply_text:
+                concern.admin_reply = reply_text
                 # If this is a new reply (was empty), set the admin who replied
                 if not concern.replied_by_admin_id:
                     concern.replied_by_admin_id = g.current_admin.admin_id
@@ -100,6 +115,52 @@ def update_concern(concern_id):
                 concern.admin_reply = None
                 concern.replied_by_admin_id = None
                 concern.replied_at = None
+            audit_new_value["admin_reply"] = concern.admin_reply
+
+        process_fields_updated = False
+
+        if "process_stage" in data:
+            new_process_stage = str(data["process_stage"] or "").strip().lower()
+            if new_process_stage not in ALLOWED_PROCESS_STAGES:
+                return jsonify({"error": "Invalid process stage"}), 400
+            if concern.process_stage != new_process_stage:
+                concern.process_stage = new_process_stage
+                process_fields_updated = True
+            audit_new_value["process_stage"] = new_process_stage
+
+            # Keep status and process stage aligned even when status is omitted.
+            if new_process_stage == "resolved" and "status" not in data:
+                concern.status = "resolved"
+                audit_new_value["status"] = "resolved"
+
+        if "resolution_remarks" in data:
+            raw_remarks = str(data["resolution_remarks"] or "").strip()
+            normalized_remarks = raw_remarks if raw_remarks else None
+            if concern.resolution_remarks != normalized_remarks:
+                concern.resolution_remarks = normalized_remarks
+                process_fields_updated = True
+            audit_new_value["resolution_remarks"] = normalized_remarks
+
+        if "process_stage" in data or "resolution_remarks" in data:
+            effective_stage = (
+                str(data.get("process_stage") or concern.process_stage).strip().lower()
+            )
+            effective_remarks = str(
+                data.get("resolution_remarks", concern.resolution_remarks) or ""
+            ).strip()
+            if (
+                effective_stage in PROCESS_STAGES_REQUIRING_REMARKS
+                and len(effective_remarks) < 10
+            ):
+                return jsonify({
+                    "error": "Remarks must be at least 10 characters for this process stage"
+                }), 400
+
+        if process_fields_updated:
+            concern.process_updated_by_admin_id = g.current_admin.admin_id
+            concern.process_updated_at = datetime.now(timezone.utc)
+            audit_new_value["process_updated_by_admin_id"] = g.current_admin.admin_id
+            audit_new_value["process_updated_at"] = concern.process_updated_at.isoformat()
 
         db.session.commit()
 
@@ -109,7 +170,7 @@ def update_concern(concern_id):
             reason_code="concern_update",
             reason_text=f"Concern #{concern_id} updated.",
             target_concern_id=concern_id,
-            new_value={k: data[k] for k in ("status", "admin_reply") if k in data},
+            new_value=audit_new_value,
         )
         db.session.commit()
 
@@ -143,7 +204,7 @@ def update_concern(concern_id):
         return jsonify({"error": "Internal server error"}), 500
 
 
-# DELETE a concern (super admin only)
+# DELETE a concern (super admin only) — soft-delete with full audit trail
 @concerns_bp.route("/<int:concern_id>", methods=["DELETE"])
 @super_admin_required
 def delete_concern(concern_id):
@@ -156,18 +217,37 @@ def delete_concern(concern_id):
         if not concern:
             return jsonify({"error": "Concern not found"}), 404
 
-        concern.is_deleted = True
-        concern.deleted_at = datetime.now(timezone.utc)
-        concern.deleted_by_admin_id = g.current_admin.admin_id
+        # --- Step 1: Capture full snapshot BEFORE any mutation ---
+        old_value_snapshot = {
+            "concern_id":              concern.concern_id,
+            "name":                    concern.name,
+            "email":                   concern.email,
+            "deleted_concern_message": concern.message,
+            "status":                  concern.status,
+            "admin_reply":             concern.admin_reply,
+            "replied_by_admin_id":     concern.replied_by_admin_id,
+            "process_stage":           concern.process_stage,
+        }
 
+        # --- Step 2: Write audit log FIRST in its own commit so it always persists ---
         log_audit(
             actor_admin_id=g.current_admin.admin_id,
             action_type="concern_delete",
             reason_code=reason_code,
             reason_text=reason_text,
             target_concern_id=concern_id,
+            old_value=old_value_snapshot,
         )
+        db.session.commit()   # <-- audit row persisted independently
+
+        # --- Step 3: Now apply the soft-delete ---
+        concern.is_deleted          = True
+        concern.deleted_at          = datetime.now(timezone.utc)
+        concern.deleted_by_admin_id = g.current_admin.admin_id
+        concern.deleted_reason_code = reason_code
+        concern.deleted_reason_text = reason_text
         db.session.commit()
+
         return jsonify({"message": "Concern deleted successfully"})
 
     except Exception as e:

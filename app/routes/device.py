@@ -1,7 +1,10 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt, get_jwt_identity
 from app import db
-from app.models import Device, DeviceLog, GuardianInvitation, AdminAuditLog, Admin
+from app.models import (
+    Device, DeviceLog, DeviceConfig, DeviceLastLocation, DeviceRoute,
+    GuardianInvitation, AdminAuditLog, Admin,
+)
 from app.routes.notifications import create_notification
 from app.utils.audit import log_audit
 from datetime import datetime, timezone, timedelta
@@ -229,6 +232,8 @@ def delete_device(device_id):
 
     deleted_serial = d.device_serial_number
 
+    # Commit the audit log entry FIRST in its own transaction so it is always
+    # persisted even if the subsequent DELETE raises an exception.
     log_audit(
         actor_admin_id=actor_id,
         action_type="device_delete",
@@ -241,6 +246,14 @@ def delete_device(device_id):
             "vip_id": d.vip_id,
         },
     )
+    db.session.commit()
+
+    # Manually delete child rows that lack ON DELETE CASCADE in the DB schema
+    # so that the device row can be removed without FK violations.
+    DeviceConfig.query.filter_by(device_id=device_id).delete(synchronize_session=False)
+    DeviceLastLocation.query.filter_by(device_id=device_id).delete(synchronize_session=False)
+    DeviceRoute.query.filter_by(device_id=device_id).delete(synchronize_session=False)
+    DeviceLog.query.filter_by(device_id=device_id).delete(synchronize_session=False)
 
     db.session.delete(d)
     db.session.commit()

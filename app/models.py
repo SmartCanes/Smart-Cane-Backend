@@ -209,7 +209,7 @@ class AdminAuditLog(db.Model):
     actor_admin_id = db.Column(
         db.Integer,
         db.ForeignKey("smart_cane_db.admin_tbl.admin_id"),
-        nullable=False,
+        nullable=True,   # NULL when the acting admin was later deleted (ON DELETE SET NULL)
         index=True,
     )
     target_admin_id = db.Column(
@@ -218,7 +218,12 @@ class AdminAuditLog(db.Model):
         nullable=True,
         index=True,
     )
-    target_concern_id = db.Column(db.Integer, nullable=True, index=True)
+    target_concern_id = db.Column(
+        db.Integer,
+        db.ForeignKey("smart_cane_db.guardian_concerns_tbl.concern_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     action_type = db.Column(db.String(50), nullable=False, index=True)
     old_value_json = db.Column(db.Text, nullable=True)
@@ -718,6 +723,14 @@ class GuardianConcern(db.Model):
     is_deleted          = db.Column(db.Boolean,   nullable=False, default=False, index=True)
     deleted_at          = db.Column(db.TIMESTAMP, nullable=True,  default=None)
     deleted_by_admin_id = db.Column(db.Integer,   nullable=True,  default=None)
+    deleted_reason_code = db.Column(db.String(50),  nullable=True, default=None)
+    deleted_reason_text = db.Column(db.String(500), nullable=True, default=None)
+
+    # --- Process tracking fields (exist in DB schema, previously missing from model) ---
+    process_stage              = db.Column(db.String(50),  nullable=False, default="new")
+    resolution_remarks         = db.Column(db.Text,        nullable=True,  default=None)
+    process_updated_by_admin_id = db.Column(db.Integer,   nullable=True,  default=None)
+    process_updated_at         = db.Column(db.TIMESTAMP,  nullable=True,  default=None)
 
     created_at  = db.Column(
         db.TIMESTAMP,
@@ -734,16 +747,25 @@ class GuardianConcern(db.Model):
 
     def to_dict(self):
         return {
-            "concern_id":          self.concern_id,
-            "name":                self.name,
-            "email":               self.email,
-            "message":             self.message,
-            "status":              self.status,
-            "admin_reply":         self.admin_reply,
-            "replied_by_admin_id": self.replied_by_admin_id,
-            "replied_at":          self.replied_at.isoformat() if self.replied_at else None,
-            "created_at":          self.created_at.isoformat() if self.created_at else None,
-            "updated_at":          self.updated_at.isoformat() if self.updated_at else None,
+            "concern_id":                  self.concern_id,
+            "name":                        self.name,
+            "email":                       self.email,
+            "message":                     self.message,
+            "status":                      self.status,
+            "admin_reply":                 self.admin_reply,
+            "replied_by_admin_id":         self.replied_by_admin_id,
+            "replied_at":                  self.replied_at.isoformat() if self.replied_at else None,
+            "is_deleted":                  self.is_deleted,
+            "deleted_at":                  self.deleted_at.isoformat() if self.deleted_at else None,
+            "deleted_by_admin_id":         self.deleted_by_admin_id,
+            "deleted_reason_code":         self.deleted_reason_code,
+            "deleted_reason_text":         self.deleted_reason_text,
+            "process_stage":               self.process_stage,
+            "resolution_remarks":          self.resolution_remarks,
+            "process_updated_by_admin_id": self.process_updated_by_admin_id,
+            "process_updated_at":          self.process_updated_at.isoformat() if self.process_updated_at else None,
+            "created_at":                  self.created_at.isoformat() if self.created_at else None,
+            "updated_at":                  self.updated_at.isoformat() if self.updated_at else None,
         }
 
     def __repr__(self):
