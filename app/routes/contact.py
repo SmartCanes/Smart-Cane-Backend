@@ -48,7 +48,7 @@ def _register_successful_submission(rate_key, now_ts):
     state['last_sent_ts'] = now_ts
     CONTACT_SUBMISSION_STATE[rate_key] = state
 
-@contact_bp.route('/', methods=['POST'])
+@contact_bp.route('', methods=['POST'])
 def submit_contact():
     """
     Public endpoint for the contact form.

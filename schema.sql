@@ -634,3 +634,86 @@ INSERT IGNORE INTO reason_catalog_tbl (action_type, reason_code, reason_label) V
 ('device_delete', 'hardware_replacement', 'Hardware Replacement'),
 ('device_delete', 'inventory_cleanup', 'Inventory Cleanup'),
 ('device_delete', 'other', 'Other');
+
+CREATE TABLE guardian_settings_tbl (
+    settings_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    guardian_id INT NOT NULL,
+
+    allow_location TINYINT(1) NOT NULL DEFAULT 1,
+    push_notifications TINYINT(1) NOT NULL DEFAULT 1,
+    email_notifications TINYINT(1) NOT NULL DEFAULT 1,
+    sms_alerts TINYINT(1) NOT NULL DEFAULT 0,
+    two_factor_enabled TINYINT(1) NOT NULL DEFAULT 0,
+
+    updated_at TIMESTAMP NOT NULL 
+        DEFAULT CURRENT_TIMESTAMP 
+        ON UPDATE CURRENT_TIMESTAMP,
+
+    CONSTRAINT uq_guardian_settings_guardian
+        UNIQUE (guardian_id),
+
+    CONSTRAINT fk_guardian_settings_guardian
+        FOREIGN KEY (guardian_id) REFERENCES guardian_tbl(guardian_id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE
+) ENGINE=InnoDB;
+
+
+
+START TRANSACTION;
+
+USE smart_cane_db;
+
+CREATE TABLE IF NOT EXISTS admin_audit_log_tbl_backup_restore_fix AS
+SELECT * FROM admin_audit_log_tbl;
+
+ALTER TABLE admin_audit_log_tbl
+MODIFY COLUMN action_type VARCHAR(50) NOT NULL;
+
+ALTER TABLE admin_audit_log_tbl
+MODIFY COLUMN status VARCHAR(20) NOT NULL DEFAULT 'success';
+
+CREATE TABLE IF NOT EXISTS reason_catalog_tbl (
+reason_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+action_type VARCHAR(50) NOT NULL,
+reason_code VARCHAR(50) NOT NULL,
+reason_label VARCHAR(120) NOT NULL,
+is_active TINYINT(1) NOT NULL DEFAULT 1,
+UNIQUE KEY uq_reason_action_code (action_type, reason_code)
+) ENGINE=InnoDB;
+
+ALTER TABLE reason_catalog_tbl
+MODIFY COLUMN action_type VARCHAR(50) NOT NULL;
+
+UPDATE admin_audit_log_tbl
+SET action_type = 'device_delete'
+WHERE (action_type IS NULL OR TRIM(action_type) = '' OR action_type = '0')
+AND (
+old_value_json LIKE '%deleted_device_serial%'
+OR JSON_UNQUOTE(JSON_EXTRACT(old_value_json, '$.deleted_device_serial')) IS NOT NULL
+);
+
+UPDATE admin_audit_log_tbl
+SET action_type = 'admin_delete'
+WHERE (action_type IS NULL OR TRIM(action_type) = '' OR action_type = '0')
+AND (
+old_value_json LIKE '%deleted_admin_id%'
+OR JSON_UNQUOTE(JSON_EXTRACT(old_value_json, '$.deleted_admin_id')) IS NOT NULL
+);
+
+UPDATE admin_audit_log_tbl
+SET action_type = 'concern_delete'
+WHERE (action_type IS NULL OR TRIM(action_type) = '' OR action_type = '0')
+AND (
+old_value_json LIKE '%concern_id%'
+OR JSON_UNQUOTE(JSON_EXTRACT(old_value_json, '$.concern_id')) IS NOT NULL
+);
+
+INSERT IGNORE INTO reason_catalog_tbl (action_type, reason_code, reason_label) VALUES
+('device_delete', 'duplicate_device', 'Duplicate device record'),
+('device_delete', 'invalid_registration', 'Invalid registration'),
+('device_delete', 'decommissioned', 'Decommissioned device'),
+('device_delete', 'test_data_cleanup', 'Test data cleanup'),
+('device_delete', 'other', 'Other');
+
+COMMIT;
