@@ -14,6 +14,7 @@ app = create_app()
 
 if __name__ == "__main__":
     MODE = os.environ.get("MODE", "development") == "development"
+    port = int(os.environ.get("PORT", 5001))
 
     ssl_cert = os.getenv("PUBLIC_CERTIFICATE_KEY") if not MODE else None
     ssl_key = os.getenv("PRIVATE_CERTIFICATE_KEY") if not MODE else None
@@ -24,4 +25,4 @@ if __name__ == "__main__":
     else:
         print("Running with HTTP")
 
-    app.run(host="0.0.0.0", port=5000, ssl_context=ssl_context, debug=MODE)
+    app.run(host="0.0.0.0", port=port, ssl_context=ssl_context, debug=MODE)
