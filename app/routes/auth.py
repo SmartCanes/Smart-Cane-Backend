@@ -200,7 +200,7 @@ def is_login_allowed(username=None, ip_address=None, max_attempts=3, window_minu
 @limiter.limit("5 per minute")
 def check_credentials():
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
 
         # Check if username exists
         if data.get("username"):
@@ -438,15 +438,13 @@ def get_login_block_info(username, ip_address, window_minutes=30, free_attempts=
 @auth_bp.route("/login", methods=["POST"])
 def login():
     try:
-        data = request.get_json()
-        identifier = data.get("identifier")
+        data = request.get_json() or {}
+        identifier = (data.get("identifier") or "").strip().lower()
         password = data.get("password")
         ip_addr = request.remote_addr
 
         if not identifier or not password:
             return error_response("Email/Username and password required", 400)
-
-        identifier = identifier.strip().lower()
 
         # Determine identifier type
         is_email = "@" in identifier

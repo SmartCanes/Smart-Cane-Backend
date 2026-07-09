@@ -1,10 +1,14 @@
 import os
-from dotenv import load_dotenv
 from app import create_app
 from flask_cors import CORS
 
 # Load environment variables
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
 
 app = create_app()
 
